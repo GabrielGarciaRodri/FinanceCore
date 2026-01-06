@@ -101,7 +101,7 @@ El sistema implementa **Clean Architecture** con separación clara de responsabi
 
 1. **Clonar el repositorio**
 ```bash
-git clone https://github.com/tu-usuario/financecore.git
+git clone https://github.com/GabrielGarciaRodri/financecore.git
 cd financecore
 ```
 
