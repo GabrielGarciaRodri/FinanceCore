@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="Dapper" Version="2.1.28" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.9" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.9" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.20.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FinanceCore.Domain\FinanceCore.Domain.csproj" />
+    <ProjectReference Include="..\FinanceCore.Application\FinanceCore.Application.csproj" />
+  </ItemGroup>
+</Project>

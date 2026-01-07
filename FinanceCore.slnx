@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FinanceCore.API/FinanceCore.API.csproj" />
+    <Project Path="src/FinanceCore.Application/FinanceCore.Application.csproj" />
+    <Project Path="src/FinanceCore.Domain/FinanceCore.Domain.csproj" />
+    <Project Path="src/FinanceCore.Infrastructure/FinanceCore.Infrastructure.csproj" />
+  </Folder>
+</Solution>

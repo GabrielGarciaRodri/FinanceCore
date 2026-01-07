@@ -1,0 +1,104 @@
+version: '3.8'
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FINANCECORE - Docker Compose para Desarrollo
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: financecore-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: financecore
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d financecore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - financecore-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis Cache
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: financecore-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - financecore-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # pgAdmin - Administración de PostgreSQL
+  # ─────────────────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: financecore-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@financecore.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - financecore-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # API Application (opcional - para pruebas de integración)
+  # ─────────────────────────────────────────────────────────────────────────────
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: src/FinanceCore.API/Dockerfile
+  #   container_name: financecore-api
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=financecore;Username=postgres;Password=postgres
+  #     - ConnectionStrings__Redis=redis:6379
+  #   ports:
+  #     - "5000:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - financecore-network
+
+volumes:
+  postgres_data:
+    name: financecore-postgres-data
+  redis_data:
+    name: financecore-redis-data
+  pgadmin_data:
+    name: financecore-pgadmin-data
+
+networks:
+  financecore-network:
+    name: financecore-network
+    driver: bridge
