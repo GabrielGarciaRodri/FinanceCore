@@ -1,206 +1,254 @@
-﻿# FinanceCore - Sistema de Conciliación y Análisis Financiero
+# FinanceCore
 
-![.NET](https://img.shields.io/badge/.NET-8.0-purple)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+Enterprise-grade financial ETL system for transaction processing, reconciliation, and analysis built with .NET 8 and Clean Architecture.
 
-Sistema ETL financiero de nivel empresarial para procesamiento, conciliación y análisis de transacciones bancarias.
+## Table of Contents
 
-## 📋 Tabla de Contenidos
-
-- [Descripción](#descripción)
-- [Arquitectura](#arquitectura)
-- [Stack Tecnológico](#stack-tecnológico)
-- [Instalación](#instalación)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Modelo de Datos](#modelo-de-datos)
-- [Casos de Uso](#casos-de-uso)
-- [Jobs de Background](#jobs-de-background)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Domain Model](#domain-model)
+- [Key Features](#key-features)
 - [API Endpoints](#api-endpoints)
-- [Buenas Prácticas](#buenas-prácticas)
-- [Mejoras Futuras](#mejoras-futuras)
+- [Background Jobs](#background-jobs)
+- [Configuration](#configuration)
+- [Development](#development)
+- [License](#license)
 
-## 📖 Descripción
+## Overview
 
-FinanceCore es un sistema diseñado para:
+FinanceCore is a comprehensive financial data processing platform designed to handle high-volume transaction ingestion, automated reconciliation, and real-time balance tracking. The system implements enterprise patterns and practices commonly found in banking and fintech applications.
 
-- **Ingerir datos financieros** desde múltiples fuentes (APIs, archivos CSV/Excel, SFTP)
-- **Procesar y transformar** transacciones con validaciones de integridad
-- **Conciliar** movimientos contra fuentes externas
-- **Generar reportes** y métricas financieras
-- **Detectar anomalías** y posibles fraudes
+### Core Capabilities
 
-### Reglas de Negocio Clave
+- **Transaction Ingestion**: Process transactions from multiple sources (APIs, CSV, Excel, SFTP) with idempotency guarantees
+- **Automated Reconciliation**: Match internal records against external sources with configurable tolerance thresholds
+- **Balance Management**: Real-time balance tracking with daily close procedures and audit trails
+- **Multi-Currency Support**: Handle transactions in multiple currencies with automatic exchange rate conversion
+- **Compliance Ready**: Full audit logging with immutable transaction history
+
+### Business Rules
+
+| Principle | Implementation |
+|-----------|----------------|
+| Double-Entry Accounting | Every transaction generates balanced debit/credit entries |
+| Immutability | Posted transactions cannot be modified, only adjusted |
+| Precision | All monetary values use decimal(18,4) with banker's rounding |
+| Traceability | Complete audit trail for every operation |
+| Idempotency | Duplicate detection via external_id and hash |
+
+## Architecture
+
+The system follows Clean Architecture principles with clear separation of concerns:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PRINCIPIOS FINANCIEROS                       │
-├─────────────────────────────────────────────────────────────────┤
-│ ✓ Partida Doble: Débito = Crédito siempre                      │
-│ ✓ Inmutabilidad: Transacciones confirmadas nunca se modifican  │
-│ ✓ Precisión: decimal(18,4), redondeo bancario                  │
-│ ✓ Trazabilidad: Auditoría completa de cada operación           │
-│ ✓ Idempotencia: Reprocesar no duplica transacciones            │
+│                        PRESENTATION                             │
+│         REST API  |  Hangfire Dashboard  |  Health Checks       │
 └─────────────────────────────────────────────────────────────────┘
-```
-
-## 🏗️ Arquitectura
-
-El sistema implementa **Clean Architecture** con separación clara de responsabilidades:
-
-```
+                                │
+                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      PRESENTATION LAYER                         │
-│   REST API │ Hangfire Dashboard │ Health Checks │ Swagger       │
+│                        APPLICATION                              │
+│           Commands  |  Queries  |  MediatR Pipeline             │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
+                                │
+                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      APPLICATION LAYER                          │
-│     Use Cases │ Commands │ Queries │ MediatR Pipeline          │
+│                          DOMAIN                                 │
+│      Entities  |  Value Objects  |  Domain Events  |  Rules     │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
+                                │
+                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        DOMAIN LAYER                             │
-│   Entities │ Value Objects │ Domain Services │ Events          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    INFRASTRUCTURE LAYER                         │
-│ EF Core │ Dapper │ Hangfire │ Redis │ External APIs │ Files    │
+│                       INFRASTRUCTURE                            │
+│     EF Core  |  Dapper  |  Hangfire  |  External Services       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 🛠️ Stack Tecnológico
+### Design Patterns
 
-| Categoría | Tecnología | Uso |
-|-----------|-----------|-----|
-| **Framework** | .NET 8 / ASP.NET Core | API y aplicación |
-| **ORM** | Entity Framework Core 8 | Escrituras y migraciones |
-| **Micro-ORM** | Dapper | Queries de alto rendimiento |
-| **Base de Datos** | PostgreSQL 16 | Persistencia principal |
-| **Caché** | Redis | Caché distribuido |
-| **Jobs** | Hangfire | Procesamiento en background |
-| **Logging** | Serilog | Logging estructurado |
-| **Validación** | FluentValidation | Validación de requests |
-| **Mediator** | MediatR | CQRS y pipeline |
-| **Documentación** | Swagger/OpenAPI | API docs |
+- **CQRS**: Command Query Responsibility Segregation with MediatR
+- **Repository Pattern**: Abstraction over data access with Unit of Work
+- **Domain Events**: Loose coupling between aggregates
+- **Result Pattern**: Explicit error handling without exceptions
+- **Value Objects**: Encapsulation of domain concepts (Money, Currency)
 
-## 🚀 Instalación
+## Technology Stack
 
-### Prerrequisitos
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| Framework | .NET 8 | Runtime and SDK |
+| Web API | ASP.NET Core | REST API endpoints |
+| ORM | Entity Framework Core 8 | Write operations and migrations |
+| Micro-ORM | Dapper | High-performance read queries |
+| Database | PostgreSQL 16 | Primary data store |
+| Cache | Redis | Distributed caching |
+| Background Jobs | Hangfire | Scheduled and queued job processing |
+| Validation | FluentValidation | Request validation |
+| Mediator | MediatR | CQRS and pipeline behaviors |
+| Logging | Serilog | Structured logging |
+| Documentation | Swagger/OpenAPI | API documentation |
+| Containerization | Docker | Development and deployment |
 
-- .NET 8 SDK
-- Docker y Docker Compose
-- PostgreSQL 16 (o usar Docker)
-- Redis (o usar Docker)
-
-### Pasos
-
-1. **Clonar el repositorio**
-```bash
-git clone https://github.com/GabrielGarciaRodri/financecore.git
-cd financecore
-```
-
-2. **Iniciar servicios con Docker**
-```bash
-docker-compose up -d
-```
-
-3. **Restaurar paquetes**
-```bash
-dotnet restore
-```
-
-4. **Aplicar migraciones**
-```bash
-cd src/FinanceCore.API
-dotnet ef database update
-```
-
-5. **Ejecutar la aplicación**
-```bash
-dotnet run
-```
-
-### URLs de desarrollo
-
-| Servicio | URL |
-|----------|-----|
-| API | http://localhost:5000 |
-| Swagger | http://localhost:5000/swagger |
-| Hangfire | http://localhost:5000/hangfire |
-| Health | http://localhost:5000/health |
-| pgAdmin | http://localhost:5050 |
-
-## 📁 Estructura del Proyecto
+## Project Structure
 
 ```
 FinanceCore/
 ├── src/
-│   ├── FinanceCore.Domain/           # Núcleo del negocio
-│   │   ├── Entities/                 # Entidades de dominio
-│   │   ├── ValueObjects/             # Money, Currency, etc.
-│   │   ├── Enums/                    # Enumeraciones
-│   │   ├── Exceptions/               # Excepciones de dominio
-│   │   ├── Events/                   # Eventos de dominio
-│   │   └── Repositories/             # Interfaces de repositorios
+│   ├── FinanceCore.Domain/
+│   │   ├── Entities/
+│   │   │   ├── Transaction.cs
+│   │   │   ├── Account.cs
+│   │   │   └── ...
+│   │   ├── ValueObjects/
+│   │   │   ├── Money.cs
+│   │   │   └── Currency.cs
+│   │   ├── Enums/
+│   │   ├── Events/
+│   │   ├── Exceptions/
+│   │   └── Repositories/
 │   │
-│   ├── FinanceCore.Application/      # Casos de uso
-│   │   ├── Common/                   # Behaviors, Models
-│   │   ├── Transactions/             # Commands y Queries
-│   │   ├── Reconciliation/           # Conciliación
-│   │   └── Reports/                  # Reportes
+│   ├── FinanceCore.Application/
+│   │   ├── Common/
+│   │   │   ├── Behaviors/
+│   │   │   └── Models/
+│   │   └── Transactions/
+│   │       └── Commands/
 │   │
-│   ├── FinanceCore.Infrastructure/   # Implementaciones
-│   │   ├── Persistence/              # EF Core, Dapper
-│   │   ├── BackgroundJobs/           # Hangfire jobs
-│   │   ├── ExternalServices/         # APIs externas
-│   │   └── FileProcessing/           # Parsers CSV/Excel
+│   ├── FinanceCore.Infrastructure/
+│   │   ├── Persistence/
+│   │   │   ├── Context/
+│   │   │   └── Repositories/
+│   │   └── BackgroundJobs/
+│   │       ├── Jobs/
+│   │       └── Configuration/
 │   │
-│   └── FinanceCore.API/              # Presentación
-│       ├── Controllers/              # REST controllers
-│       ├── Middleware/               # Middlewares
-│       └── Filters/                  # Action filters
+│   └── FinanceCore.API/
+│       ├── Controllers/
+│       ├── Program.cs
+│       └── appsettings.json
 │
-├── tests/                            # Tests unitarios e integración
-├── database/migrations/              # Scripts SQL
-└── docker-compose.yml
+├── database/
+│   └── migrations/
+│       └── V001__Initial_Schema.sql
+│
+├── docker-compose.yml
+└── README.md
 ```
 
-## 💾 Modelo de Datos
+## Getting Started
 
-### Entidades Principales
+### Prerequisites
 
+- .NET 8 SDK
+- Docker and Docker Compose
+- PostgreSQL 16 (or use Docker)
+- Redis (or use Docker)
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/GabrielGarciaRodri/FinanceCore.git
+cd FinanceCore
 ```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│     Account      │────▶│   Transaction    │────▶│  Reconciliation  │
-├──────────────────┤     ├──────────────────┤     ├──────────────────┤
-│ account_number   │     │ external_id (UK) │     │ matched_count    │
-│ currency_code    │     │ amount           │     │ unmatched_count  │
-│ current_balance  │     │ status           │     │ discrepancy      │
-│ available_balance│     │ value_date       │     │ status           │
-│ version (CC)     │     │ hash (duplicates)│     └──────────────────┘
-└──────────────────┘     └──────────────────┘
+
+2. Start infrastructure services:
+
+```bash
+docker-compose up -d
+```
+
+3. Restore dependencies:
+
+```bash
+dotnet restore
+```
+
+4. Build the solution:
+
+```bash
+dotnet build
+```
+
+5. Run the API:
+
+```bash
+cd src/FinanceCore.API
+dotnet run
+```
+
+### Access Points
+
+| Service | URL |
+|---------|-----|
+| API | http://localhost:5000 |
+| Swagger UI | http://localhost:5000/swagger |
+| Hangfire Dashboard | http://localhost:5000/hangfire |
+| Health Check | http://localhost:5000/health |
+| pgAdmin | http://localhost:5050 |
+
+## Domain Model
+
+### Core Entities
+
+**Transaction**: Represents a financial movement with full audit trail.
+
+```csharp
+public class Transaction : BaseEntity, IAggregateRoot
+{
+    public string ExternalId { get; }           // Source system identifier
+    public Money Amount { get; }                // Value with currency
+    public TransactionType Type { get; }        // Debit, Credit, Transfer, etc.
+    public TransactionStatus Status { get; }    // Pending, Posted, Reconciled, etc.
+    public DateOnly ValueDate { get; }          // Effective date
+    public string Hash { get; }                 // Duplicate detection
+}
+```
+
+**Account**: Financial account with balance tracking and optimistic concurrency.
+
+```csharp
+public class Account : BaseEntity, IAggregateRoot
+{
+    public string AccountNumber { get; }
+    public Money CurrentBalance { get; }
+    public Money AvailableBalance { get; }
+    public int Version { get; }                 // Concurrency token
+}
 ```
 
 ### Value Objects
 
-- **Money**: Manejo preciso de valores monetarios con `decimal(18,4)`
-- **Currency**: Monedas ISO 4217 con validación
-
-## 📊 Casos de Uso
-
-### 1. Ingesta de Transacciones
+**Money**: Immutable representation of monetary values with banker's rounding.
 
 ```csharp
-// Comando para ingerir batch de transacciones
+var price = Money.FromDecimal(100.50m, Currency.USD);
+var tax = price.Percentage(8.25m);
+var total = price.Add(tax);  // Ensures same currency
+```
+
+**Currency**: ISO 4217 currency codes with validation.
+
+```csharp
+var usd = Currency.FromCode("USD");
+var cop = Currency.COP;  // Predefined constants
+```
+
+## Key Features
+
+### Idempotent Transaction Processing
+
+Transactions are uniquely identified by the combination of `external_id` and `source`, preventing duplicates during reprocessing:
+
+```csharp
 var command = new IngestTransactionsCommand
 {
-    Source = "BANCOLOMBIA_API",
+    Source = "BANK_API",
     Transactions = transactions,
     FailOnFirstError = false
 };
@@ -209,170 +257,151 @@ var result = await mediator.Send(command);
 // Result: { Succeeded: 95, Failed: 3, Duplicates: 2 }
 ```
 
-### 2. Conciliación Automática
+### Pipeline Behaviors
 
-```csharp
-// Job programado diariamente
-RecurringJob.AddOrUpdate<DailyReconciliationJob>(
-    "daily-reconciliation",
-    job => job.ReconcileAllAccountsAsync(DateTime.Today.AddDays(-1)),
-    "0 6 * * *"); // 6 AM todos los días
+Cross-cutting concerns are handled through MediatR pipeline behaviors:
+
+| Behavior | Purpose |
+|----------|---------|
+| LoggingBehavior | Request/response logging with timing |
+| ValidationBehavior | FluentValidation execution |
+| TransactionBehavior | Database transaction management |
+| CachingBehavior | Response caching for queries |
+
+### Dual Data Access Strategy
+
+- **Entity Framework Core**: Write operations with change tracking and migrations
+- **Dapper**: High-performance read queries for reporting and search
+
+## API Endpoints
+
+### Transactions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/transactions/ingest | Ingest batch of transactions |
+| GET | /api/transactions/{id} | Get transaction by ID |
+| GET | /api/transactions/search | Search with filters and pagination |
+| GET | /api/transactions/accounts/{accountId}/summary | Account transaction summary |
+
+### Request Example
+
+```http
+POST /api/transactions/ingest
+Content-Type: application/json
+
+{
+  "source": "BANCOLOMBIA_API",
+  "sourceType": "BankApi",
+  "failOnFirstError": false,
+  "transactions": [
+    {
+      "externalId": "TXN-2024-001",
+      "accountId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "amount": -150000.00,
+      "currencyCode": "COP",
+      "type": "Debit",
+      "description": "Wire transfer",
+      "valueDate": "2024-01-15"
+    }
+  ]
+}
 ```
 
-### 3. Cierre Diario
+## Background Jobs
 
-```csharp
-// Calcula balances, detecta descuadres
-var closeJob = new DailyCloseJob();
-await closeJob.ExecuteDailyCloseAsync(DateOnly.FromDateTime(DateTime.Today));
-```
+Scheduled jobs are managed through Hangfire with PostgreSQL persistence:
 
-## ⚙️ Jobs de Background
-
-| Job | Schedule | Descripción |
+| Job | Schedule | Description |
 |-----|----------|-------------|
-| TransactionIngestion | */15 * * * * | Procesa archivos pendientes cada 15 min |
-| DailyClose | 59 23 * * * | Cierre diario a las 23:59 |
-| ExchangeRateUpdate | 0 8-18 * * 1-5 | Actualiza tipos de cambio cada hora |
-| DataCleanup | 0 3 * * 0 | Limpieza semanal de datos antiguos |
+| TransactionIngestionJob | Every 15 minutes | Process pending file uploads |
+| DailyCloseJob | 23:59 daily | Calculate daily balances and detect discrepancies |
+| ExchangeRateUpdateJob | Hourly (8am-6pm, Mon-Fri) | Update currency exchange rates |
+| DataCleanupJob | Sundays at 3am | Archive old audit logs |
 
-### Configuración de Reintentos
+### Job Configuration
+
+Jobs support automatic retry with exponential backoff:
 
 ```csharp
 [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 60, 300, 900 })]
-[DisableConcurrentExecution(timeoutInSeconds: 600)]
-[Queue("critical")]
-public async Task ExecuteDailyCloseAsync(DateOnly closeDate) { ... }
+[DisableConcurrentExecution(timeoutInSeconds = 600)]
+public async Task ExecuteDailyCloseAsync(DateOnly closeDate, CancellationToken ct)
 ```
 
-## 🔌 API Endpoints
+## Configuration
 
-### Transacciones
+### Application Settings
 
-```
-POST   /api/transactions/ingest           # Ingerir batch
-GET    /api/transactions/{id}             # Obtener por ID
-GET    /api/transactions/search           # Búsqueda avanzada
-GET    /api/transactions/accounts/{id}/summary  # Resumen por cuenta
-```
-
-### Cuentas
-
-```
-GET    /api/accounts                      # Listar cuentas
-GET    /api/accounts/{id}                 # Obtener cuenta
-GET    /api/accounts/{id}/balances        # Historial de saldos
-```
-
-### Conciliación
-
-```
-POST   /api/reconciliation/run            # Ejecutar conciliación
-GET    /api/reconciliation/{id}           # Estado de conciliación
-GET    /api/reconciliation/discrepancies  # Listar descuadres
-```
-
-## ✅ Buenas Prácticas Implementadas
-
-### 1. Manejo de Dinero
-
-```csharp
-// ✅ CORRECTO: Usar decimal con redondeo bancario
-public Money Add(Money other)
+```json
 {
-    EnsureSameCurrency(other);
-    return new Money(
-        Math.Round(Amount + other.Amount, 4, MidpointRounding.ToEven),
-        Currency);
-}
-
-// ❌ INCORRECTO: Nunca usar float/double para dinero
-// float balance = 1000.50f; // NO!
-```
-
-### 2. Idempotencia
-
-```csharp
-// Verificar duplicados antes de insertar
-var existing = await _repo.GetByExternalIdAsync(externalId, source);
-if (existing != null)
-    return Result.Success(existing.Id); // Retornar existente, no error
-```
-
-### 3. Concurrencia Optimista
-
-```csharp
-// Account tiene versión para control de concurrencia
-builder.Property(a => a.Version)
-    .IsConcurrencyToken()
-    .HasDefaultValue(1);
-
-// Al actualizar, EF Core valida la versión
-account.Version++; // Incrementar en cada cambio
-```
-
-### 4. Auditoría Completa
-
-```csharp
-// Trigger automático para audit logs
-public override async Task<int> SaveChangesAsync(CancellationToken ct)
-{
-    foreach (var entry in ChangeTracker.Entries<BaseEntity>())
-    {
-        if (entry.State == EntityState.Modified)
-        {
-            // Registrar cambios en audit_logs
-            await LogAuditAsync(entry);
-        }
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=financecore;Username=postgres;Password=postgres",
+    "Redis": "localhost:6379"
+  },
+  "FinanceCore": {
+    "FileIngestion": {
+      "InputDirectory": "./data/input",
+      "ProcessedDirectory": "./data/processed",
+      "SupportedExtensions": [".csv", ".xlsx"]
+    },
+    "Reconciliation": {
+      "AutoReconcileEnabled": true,
+      "MaxDiscrepancyForAutoApproval": 1.00
+    },
+    "Processing": {
+      "BatchSize": 1000,
+      "MaxParallelJobs": 4
     }
-    return await base.SaveChangesAsync(ct);
+  }
 }
 ```
 
-### 5. CQRS con Dapper y EF Core
+### Environment Variables
 
-```csharp
-// Escrituras: EF Core (tracking, validaciones)
-_context.Transactions.Add(transaction);
-await _context.SaveChangesAsync();
+| Variable | Description | Default |
+|----------|-------------|---------|
+| ASPNETCORE_ENVIRONMENT | Runtime environment | Development |
+| ConnectionStrings__DefaultConnection | PostgreSQL connection | - |
+| ConnectionStrings__Redis | Redis connection | localhost:6379 |
 
-// Lecturas complejas: Dapper (rendimiento)
-const string sql = "SELECT ... FROM transactions WHERE ...";
-return await connection.QueryAsync<TransactionDto>(sql, parameters);
+## Development
+
+### Building
+
+```bash
+dotnet build
 ```
 
-## 🚀 Mejoras Futuras
+### Running Tests
 
-### Corto Plazo
-- [ ] Implementar Event Sourcing para transacciones críticas
-- [ ] Agregar tests de integración con Testcontainers
-- [ ] Implementar rate limiting en API
+```bash
+dotnet test
+```
 
-### Mediano Plazo
-- [ ] Migrar a arquitectura de microservicios
-- [ ] Implementar SAGA pattern para transacciones distribuidas
-- [ ] Agregar procesamiento con Apache Kafka
+### Database Migrations
 
-### Largo Plazo
-- [ ] Machine Learning para detección de fraudes
-- [ ] Real-time analytics con Apache Spark
-- [ ] Multi-tenancy para SaaS
+The initial schema is located at `database/migrations/V001__Initial_Schema.sql`. To apply manually:
 
-## ⚠️ Errores Comunes y Cómo Evitarlos
+```bash
+psql -h localhost -U postgres -d financecore -f database/migrations/V001__Initial_Schema.sql
+```
 
-| Error | Consecuencia | Solución |
-|-------|--------------|----------|
-| Usar `float` para dinero | Errores de precisión | Siempre `decimal(18,4)` |
-| No validar idempotencia | Transacciones duplicadas | Verificar `external_id` |
-| Ignorar zonas horarias | Fechas incorrectas | Usar `DateTimeOffset` |
-| Modificar transacciones | Pérdida de auditoría | Crear ajustes nuevos |
-| No manejar concurrencia | Race conditions | Optimistic locking |
+### Code Style
 
-## 📝 Licencia
+The project follows standard .NET conventions:
 
-MIT License - ver [LICENSE](LICENSE) para detalles.
+- PascalCase for public members
+- camelCase for private fields with underscore prefix
+- Async suffix for asynchronous methods
+- XML documentation for public APIs
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
 
 ---
 
-**Desarrollado por Gabriel** - Full Stack Developer  
-*Proyecto de portafolio para roles .NET en el sector financiero*
+Developed by Gabriel Garcia Rodriguez
+
+Full Stack Developer | .NET | Financial Systems
