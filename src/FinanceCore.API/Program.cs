@@ -11,6 +11,8 @@ using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
 using FinanceCore.Infrastructure.Persistence.Context;
 using FinanceCore.Infrastructure.Persistence.Repositories;
+using FinanceCore.Infrastructure.Services;
+using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE SERILOG (antes de construir el host)
@@ -86,10 +88,13 @@ try
     // Repositorios y Unit of Work
     // ─────────────────────────────────────────────────────────────────────────────
     services.AddScoped<ITransactionRepository, TransactionRepository>();
-    // services.AddScoped<IAccountRepository, AccountRepository>();
-    // services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
-    // services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
-    // services.AddScoped<IUnitOfWork, UnitOfWork>();
+    services.AddScoped<IAccountRepository, AccountRepository>();
+    services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
+    services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
+    services.AddScoped<IUnitOfWork, UnitOfWork>();
+    services.AddScoped<IFileIngestionService, FileIngestionService>();
+    services.AddScoped<IExchangeRateProvider, ExchangeRateProvider>();
+    services.AddScoped<IReconciliationEngine, ReconciliationEngine>();
 
     // ─────────────────────────────────────────────────────────────────────────────
     // MediatR + Pipeline Behaviors

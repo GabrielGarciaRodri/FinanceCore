@@ -79,7 +79,7 @@ public class ReconciliationException : DomainException
 public class DuplicateTransactionException : DomainException
 {
     public string ExternalId { get; }
-    public string Source { get; }
+    public new string Source { get; }
     public Guid? ExistingTransactionId { get; }
 
     public DuplicateTransactionException(string externalId, string source, Guid? existingId = null)
