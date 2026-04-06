@@ -4,18 +4,47 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using FinanceCore.Domain.Entities;
 using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.ValueObjects;
+using FinanceCore.Infrastructure.Services;
 
 namespace FinanceCore.Infrastructure.Persistence.Context;
 
 public class FinanceCoreDbContext : DbContext
 {
+    private readonly IDomainEventDispatcher? _domainEventDispatcher;
+
     public FinanceCoreDbContext(DbContextOptions<FinanceCoreDbContext> options) : base(options) { }
+
+    public FinanceCoreDbContext(
+        DbContextOptions<FinanceCoreDbContext> options,
+        IDomainEventDispatcher domainEventDispatcher) : base(options)
+    {
+        _domainEventDispatcher = domainEventDispatcher;
+    }
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<DailyBalance> DailyBalances => Set<DailyBalance>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<Institution> Institutions => Set<Institution>();
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        // Dispatch domain events before saving
+        if (_domainEventDispatcher != null)
+        {
+            var entitiesWithEvents = ChangeTracker.Entries<BaseEntity>()
+                .Where(e => e.Entity.DomainEvents.Any())
+                .Select(e => e.Entity)
+                .ToList();
+
+            if (entitiesWithEvents.Count > 0)
+            {
+                await _domainEventDispatcher.DispatchEventsAsync(entitiesWithEvents, cancellationToken);
+            }
+        }
+
+        return await base.SaveChangesAsync(cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
