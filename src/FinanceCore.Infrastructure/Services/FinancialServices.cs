@@ -45,7 +45,10 @@ public class UnitOfWork : IUnitOfWork
         => await _context.SaveChangesAsync(cancellationToken);
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
-        => await _context.Database.BeginTransactionAsync(cancellationToken);
+    {
+        if (_context.Database.CurrentTransaction == null)
+            await _context.Database.BeginTransactionAsync(cancellationToken);
+    }
 
     public async Task CommitTransactionAsync(CancellationToken cancellationToken = default)
     {

@@ -39,16 +39,46 @@ public class Transaction : BaseEntity, IAggregateRoot
     /// </summary>
     public TransactionStatus Status { get; private set; }
 
+    // EF Core backing fields for Money value objects
+    private decimal _amountValue;
+    private string _currencyCode = null!;
+    private decimal? _originalAmountValue;
+    private string? _originalCurrencyCode;
+
+    // EF Core backing fields for CounterpartyInfo
+    private string? _counterpartyName;
+    private string? _counterpartyAccount;
+    private string? _counterpartyBank;
+    private string? _counterpartyReference;
+
     /// <summary>
     /// Monto de la transacción en la moneda de la cuenta.
     /// SIEMPRE negativo para débitos, positivo para créditos.
     /// </summary>
-    public Money Amount { get; private set; } = null!;
+    public Money Amount
+    {
+        get => Money.Create(_amountValue, Currency.FromCode(_currencyCode ?? "USD"));
+        private set
+        {
+            _amountValue = value.Amount;
+            _currencyCode = value.Currency.Code;
+        }
+    }
 
     /// <summary>
     /// Monto original si hubo conversión de moneda.
     /// </summary>
-    public Money? OriginalAmount { get; private set; }
+    public Money? OriginalAmount
+    {
+        get => _originalAmountValue.HasValue && _originalCurrencyCode != null
+            ? Money.Create(_originalAmountValue.Value, Currency.FromCode(_originalCurrencyCode))
+            : null;
+        private set
+        {
+            _originalAmountValue = value?.Amount;
+            _originalCurrencyCode = value?.Currency.Code;
+        }
+    }
     
     /// <summary>
     /// Tasa de cambio usada si hubo conversión.
@@ -93,7 +123,25 @@ public class Transaction : BaseEntity, IAggregateRoot
     /// <summary>
     /// Información de la contraparte.
     /// </summary>
-    public CounterpartyInfo? Counterparty { get; private set; }
+    public CounterpartyInfo? Counterparty
+    {
+        get => (_counterpartyName != null || _counterpartyAccount != null || _counterpartyBank != null || _counterpartyReference != null)
+            ? new CounterpartyInfo
+            {
+                Name = _counterpartyName,
+                AccountNumber = _counterpartyAccount,
+                BankName = _counterpartyBank,
+                Reference = _counterpartyReference
+            }
+            : null;
+        private set
+        {
+            _counterpartyName = value?.Name;
+            _counterpartyAccount = value?.AccountNumber;
+            _counterpartyBank = value?.BankName;
+            _counterpartyReference = value?.Reference;
+        }
+    }
 
     /// <summary>
     /// ID de conciliación (se llena cuando se concilia).

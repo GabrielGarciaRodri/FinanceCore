@@ -59,17 +59,22 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     // Base de datos - PostgreSQL con EF Core
     // ─────────────────────────────────────────────────────────────────────────────
+    var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(
+        configuration.GetConnectionString("DefaultConnection"));
+    dataSourceBuilder.MapEnum<FinanceCore.Domain.Enums.TransactionType>("transaction_type", new Npgsql.NameTranslation.NpgsqlSnakeCaseNameTranslator());
+    dataSourceBuilder.MapEnum<FinanceCore.Domain.Enums.TransactionStatus>("transaction_status", new Npgsql.NameTranslation.NpgsqlSnakeCaseNameTranslator());
+    dataSourceBuilder.MapEnum<FinanceCore.Domain.Enums.AccountType>("account_type", new Npgsql.NameTranslation.NpgsqlSnakeCaseNameTranslator());
+    dataSourceBuilder.MapEnum<FinanceCore.Domain.Enums.ReconciliationStatus>("reconciliation_status", new Npgsql.NameTranslation.NpgsqlSnakeCaseNameTranslator());
+    dataSourceBuilder.MapEnum<FinanceCore.Domain.Enums.SourceType>("source_type", new Npgsql.NameTranslation.NpgsqlSnakeCaseNameTranslator());
+    var dataSource = dataSourceBuilder.Build();
+
     services.AddDbContext<FinanceCoreDbContext>(options =>
     {
         options.UseNpgsql(
-            configuration.GetConnectionString("DefaultConnection"),
+            dataSource,
             npgsqlOptions =>
             {
                 npgsqlOptions.MigrationsAssembly(typeof(FinanceCoreDbContext).Assembly.FullName);
-                npgsqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
                 npgsqlOptions.CommandTimeout(30);
             });
 

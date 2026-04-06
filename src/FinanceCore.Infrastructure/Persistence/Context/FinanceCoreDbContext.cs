@@ -50,6 +50,13 @@ public class FinanceCoreDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // Register PostgreSQL enums
+        modelBuilder.HasPostgresEnum<TransactionType>("transaction_type");
+        modelBuilder.HasPostgresEnum<TransactionStatus>("transaction_status");
+        modelBuilder.HasPostgresEnum<AccountType>("account_type");
+        modelBuilder.HasPostgresEnum<ReconciliationStatus>("reconciliation_status");
+        modelBuilder.HasPostgresEnum<SourceType>("source_type");
+
         // Excluir Value Objects del modelo
         modelBuilder.Ignore<Money>();
         modelBuilder.Ignore<Currency>();
@@ -67,6 +74,27 @@ public class FinanceCoreDbContext : DbContext
             var tableName = entity.GetTableName();
             if (tableName != null)
                 entity.SetTableName(ToSnakeCase(tableName));
+
+            foreach (var property in entity.GetProperties())
+            {
+                var columnName = property.GetColumnName();
+                if (columnName != null)
+                    property.SetColumnName(ToSnakeCase(columnName));
+            }
+
+            foreach (var key in entity.GetKeys())
+            {
+                var keyName = key.GetName();
+                if (keyName != null)
+                    key.SetName(ToSnakeCase(keyName));
+            }
+
+            foreach (var fk in entity.GetForeignKeys())
+            {
+                var fkName = fk.GetConstraintName();
+                if (fkName != null)
+                    fk.SetConstraintName(ToSnakeCase(fkName));
+            }
         }
     }
 
@@ -90,22 +118,35 @@ public class TransactionConfiguration : IEntityTypeConfiguration<Transaction>
         builder.Property(t => t.ExternalId).HasMaxLength(100);
         builder.Property(t => t.ExternalIdSource).HasMaxLength(50);
         builder.Property(t => t.Description).HasMaxLength(500);
-        builder.Property(t => t.Category).HasMaxLength(100);
+        builder.Property(t => t.Category).HasMaxLength(50);
+        builder.Property(t => t.SubCategory).HasColumnName("subcategory").HasMaxLength(50);
         builder.Property(t => t.Hash).HasMaxLength(64);
-        builder.Property(t => t.Type).HasConversion<int>().IsRequired();
-        builder.Property(t => t.Status).HasConversion<int>().IsRequired();
+        builder.Property(t => t.Type).HasColumnName("transaction_type").IsRequired();
+        builder.Property(t => t.Status).IsRequired();
 
-        // Ignorar propiedades complejas
+        // Ignorar complex/navigation properties not mapped to columns
         builder.Ignore(t => t.Amount);
+        builder.Ignore(t => t.OriginalAmount);
+        builder.Ignore(t => t.Counterparty);
         builder.Ignore(t => t.Metadata);
+        builder.Ignore(t => t.Tags);
         builder.Ignore(t => t.DomainEvents);
         builder.Ignore(t => t.Entries);
         builder.Ignore(t => t.Source);
-        builder.Ignore(t => t.Counterparty);
 
-        // Shadow properties para valores
-        builder.Property<decimal>("AmountValue").HasColumnName("amount").HasPrecision(18, 4).IsRequired();
-        builder.Property<string>("CurrencyCode").HasColumnName("currency_code").HasMaxLength(3);
+        // Backing fields for Money value object (Amount)
+        builder.Property<decimal>("_amountValue").HasColumnName("amount").HasPrecision(18, 4).IsRequired();
+        builder.Property<string>("_currencyCode").HasColumnName("currency_code").HasMaxLength(3).IsRequired();
+
+        // Backing fields for OriginalAmount value object
+        builder.Property<decimal?>("_originalAmountValue").HasColumnName("original_amount").HasPrecision(18, 4);
+        builder.Property<string?>("_originalCurrencyCode").HasColumnName("original_currency").HasMaxLength(3);
+
+        // Backing fields for CounterpartyInfo value object
+        builder.Property<string?>("_counterpartyName").HasColumnName("counterparty_name").HasMaxLength(200);
+        builder.Property<string?>("_counterpartyAccount").HasColumnName("counterparty_account").HasMaxLength(34);
+        builder.Property<string?>("_counterpartyBank").HasColumnName("counterparty_bank").HasMaxLength(100);
+        builder.Property<string?>("_counterpartyReference").HasColumnName("counterparty_reference").HasMaxLength(100);
     }
 }
 
@@ -113,28 +154,29 @@ public class AccountConfiguration : IEntityTypeConfiguration<Account>
 {
     public void Configure(EntityTypeBuilder<Account> builder)
     {
+        builder.ToTable("financial_accounts");
         builder.HasKey(a => a.Id);
 
         builder.HasIndex(a => new { a.AccountNumber, a.InstitutionId })
             .IsUnique()
-            .HasDatabaseName("ix_accounts_number_institution");
+            .HasDatabaseName("uq_account_institution");
 
         builder.Property(a => a.AccountNumber).HasMaxLength(34).IsRequired();
         builder.Property(a => a.AccountName).HasMaxLength(100).IsRequired();
-        builder.Property(a => a.Type).HasConversion<int>().IsRequired();
+        builder.Property(a => a.Type).HasColumnName("account_type").IsRequired();
         builder.Property(a => a.Version).IsConcurrencyToken().HasDefaultValue(1);
 
-        // Ignorar propiedades complejas
+        // Ignorar complex/navigation properties
         builder.Ignore(a => a.Currency);
         builder.Ignore(a => a.CurrentBalance);
         builder.Ignore(a => a.AvailableBalance);
         builder.Ignore(a => a.DomainEvents);
         builder.Ignore(a => a.DailyBalances);
 
-        // Shadow properties
-        builder.Property<string>("CurrencyCode").HasColumnName("currency_code").HasMaxLength(3);
-        builder.Property<decimal>("CurrentBalanceValue").HasColumnName("current_balance").HasPrecision(18, 4);
-        builder.Property<decimal>("AvailableBalanceValue").HasColumnName("available_balance").HasPrecision(18, 4);
+        // Backing fields mapped to columns
+        builder.Property<string>("_currencyCode").HasColumnName("currency_code").HasMaxLength(3);
+        builder.Property<decimal>("_currentBalanceValue").HasColumnName("current_balance").HasPrecision(18, 4);
+        builder.Property<decimal>("_availableBalanceValue").HasColumnName("available_balance").HasPrecision(18, 4);
     }
 }
 
