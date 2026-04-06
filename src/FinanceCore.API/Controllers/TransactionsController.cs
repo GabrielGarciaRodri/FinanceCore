@@ -1,6 +1,8 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using FinanceCore.Application.Transactions.Commands.IngestTransactions;
+using FinanceCore.Application.Transactions.Queries;
 using FinanceCore.Domain.Repositories;
 
 namespace FinanceCore.API.Controllers;
@@ -11,6 +13,7 @@ namespace FinanceCore.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[Authorize]
 public class TransactionsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -94,15 +97,23 @@ public class TransactionsController : ControllerBase
     /// <param name="cancellationToken">Token de cancelación</param>
     /// <returns>Detalle de la transacción</returns>
     [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(TransactionDetailResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TransactionDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(
         Guid id,
         CancellationToken cancellationToken)
     {
-        // TODO: Implementar query con MediatR
-        await Task.CompletedTask;
-        return NotFound();
+        var result = await _mediator.Send(new GetTransactionByIdQuery(id), cancellationToken);
+
+        if (result.IsFailure)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Transacción no encontrada",
+                Detail = result.Error,
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(result.Value);
     }
 
     /// <summary>
@@ -112,14 +123,39 @@ public class TransactionsController : ControllerBase
     /// <param name="cancellationToken">Token de cancelación</param>
     /// <returns>Lista paginada de transacciones</returns>
     [HttpGet("search")]
-    [ProducesResponseType(typeof(PagedResult<TransactionListItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedTransactionsDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
         [FromQuery] SearchTransactionsRequest request,
         CancellationToken cancellationToken)
     {
-        // TODO: Implementar query con MediatR
-        await Task.CompletedTask;
-        return Ok(new { Items = new List<object>(), TotalCount = 0 });
+        var query = new SearchTransactionsQuery
+        {
+            AccountId = request.AccountId,
+            StartDate = request.StartDate,
+            EndDate = request.EndDate,
+            Type = request.Type,
+            Status = request.Status,
+            MinAmount = request.MinAmount,
+            MaxAmount = request.MaxAmount,
+            Category = request.Category,
+            SearchText = request.SearchText,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            SortBy = request.SortBy,
+            SortDescending = request.SortDescending
+        };
+
+        var result = await _mediator.Send(query, cancellationToken);
+
+        if (result.IsFailure)
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Error en búsqueda",
+                Detail = result.Error,
+                Status = StatusCodes.Status400BadRequest
+            });
+
+        return Ok(result.Value);
     }
 
     /// <summary>
@@ -131,7 +167,7 @@ public class TransactionsController : ControllerBase
     /// <param name="cancellationToken">Token de cancelación</param>
     /// <returns>Resumen de transacciones</returns>
     [HttpGet("accounts/{accountId:guid}/summary")]
-    [ProducesResponseType(typeof(TransactionSummary), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TransactionSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetAccountSummary(
         Guid accountId,
@@ -139,9 +175,19 @@ public class TransactionsController : ControllerBase
         [FromQuery] DateOnly endDate,
         CancellationToken cancellationToken)
     {
-        // TODO: Implementar query con MediatR
-        await Task.CompletedTask;
-        return NotFound();
+        var result = await _mediator.Send(
+            new GetAccountSummaryQuery(accountId, startDate, endDate),
+            cancellationToken);
+
+        if (result.IsFailure)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Cuenta no encontrada",
+                Detail = result.Error,
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(result.Value);
     }
 
     /// <summary>
@@ -152,15 +198,25 @@ public class TransactionsController : ControllerBase
     /// <param name="cancellationToken">Token de cancelación</param>
     /// <returns>Lista de transacciones pendientes</returns>
     [HttpGet("pending-reconciliation")]
-    [ProducesResponseType(typeof(IEnumerable<TransactionListItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IReadOnlyList<TransactionListItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPendingReconciliation(
         [FromQuery] Guid? accountId,
         [FromQuery] int limit = 100,
         CancellationToken cancellationToken = default)
     {
-        // TODO: Implementar query con MediatR
-        await Task.CompletedTask;
-        return Ok(new List<object>());
+        var result = await _mediator.Send(
+            new GetPendingReconciliationQuery { AccountId = accountId, Limit = limit },
+            cancellationToken);
+
+        if (result.IsFailure)
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Error obteniendo transacciones pendientes",
+                Detail = result.Error,
+                Status = StatusCodes.Status400BadRequest
+            });
+
+        return Ok(result.Value);
     }
 }
 

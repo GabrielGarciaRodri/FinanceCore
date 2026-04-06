@@ -2,10 +2,12 @@ using System.Reflection;
 using FluentValidation;
 using Hangfire;
 using MediatR;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
+using FinanceCore.API.Authentication;
 using FinanceCore.Application.Common.Behaviors;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
@@ -95,6 +97,7 @@ try
     services.AddScoped<IFileIngestionService, FileIngestionService>();
     services.AddScoped<IExchangeRateProvider, ExchangeRateProvider>();
     services.AddScoped<IReconciliationEngine, ReconciliationEngine>();
+    services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
 
     // ─────────────────────────────────────────────────────────────────────────────
     // MediatR + Pipeline Behaviors
@@ -108,7 +111,7 @@ try
         // Pipeline behaviors (orden importa!)
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-        // cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -182,6 +185,31 @@ try
             }
         });
 
+        // API Key authentication in Swagger
+        options.AddSecurityDefinition(ApiKeyDefaults.AuthenticationScheme, new OpenApiSecurityScheme
+        {
+            Description = "API Key authentication. Provide your API key in the X-Api-Key header.",
+            Name = ApiKeyDefaults.HeaderName,
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.ApiKey,
+            Scheme = ApiKeyDefaults.AuthenticationScheme
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = ApiKeyDefaults.AuthenticationScheme
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+
         // Incluir comentarios XML
         var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
         var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -189,6 +217,46 @@ try
         {
             options.IncludeXmlComments(xmlPath);
         }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Authentication & Authorization
+    // ─────────────────────────────────────────────────────────────────────────────
+    services.AddAuthentication(ApiKeyDefaults.AuthenticationScheme)
+        .AddApiKey(options =>
+        {
+            // Load API keys from configuration
+            var apiKeysSection = configuration.GetSection("Authentication:ApiKeys");
+            if (apiKeysSection.Exists())
+            {
+                foreach (var keySection in apiKeysSection.GetChildren())
+                {
+                    var key = keySection.Key;
+                    var clientName = keySection["ClientName"] ?? "Unknown";
+                    var roles = keySection.GetSection("Roles").Get<string[]>() ?? Array.Empty<string>();
+                    options.ApiKeys[key] = new ApiKeyConfig
+                    {
+                        ClientName = clientName,
+                        Roles = roles
+                    };
+                }
+            }
+
+            // Default development API key
+            if (builder.Environment.IsDevelopment())
+            {
+                options.ApiKeys["dev-api-key-financecore-2024"] = new ApiKeyConfig
+                {
+                    ClientName = "Development",
+                    Roles = new[] { "Admin", "FinanceAdmin", "Reader" }
+                };
+            }
+        });
+
+    services.AddAuthorization(options =>
+    {
+        options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin", "FinanceAdmin"));
+        options.AddPolicy("ReaderOrAbove", policy => policy.RequireRole("Admin", "FinanceAdmin", "Reader"));
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -256,6 +324,7 @@ try
 
     app.UseHttpsRedirection();
     app.UseRouting();
+    app.UseAuthentication();
     app.UseAuthorization();
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +332,7 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     app.MapControllers();
 
-    // Health checks
+    // Health checks (anonymous access)
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         ResponseWriter = async (context, report) =>
@@ -283,7 +352,7 @@ try
             };
             await context.Response.WriteAsJsonAsync(result);
         }
-    });
+    }).AllowAnonymous();
 
     // Hangfire Dashboard
     app.UseHangfireDashboard("/hangfire", new DashboardOptions

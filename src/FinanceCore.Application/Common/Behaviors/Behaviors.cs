@@ -2,6 +2,7 @@ using System.Diagnostics;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using FinanceCore.Domain.Repositories;
 
 namespace FinanceCore.Application.Common.Behaviors;
 
@@ -126,10 +127,14 @@ public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TReques
 public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IRequest<TResponse>
 {
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<TransactionBehavior<TRequest, TResponse>> _logger;
 
-    public TransactionBehavior(ILogger<TransactionBehavior<TRequest, TResponse>> logger)
+    public TransactionBehavior(
+        IUnitOfWork unitOfWork,
+        ILogger<TransactionBehavior<TRequest, TResponse>> logger)
     {
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -150,12 +155,12 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
 
         try
         {
-            // Aquí se integraría con IUnitOfWork
-            // await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             var response = await next();
 
-            // await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogDebug("Transacción completada para {RequestName}", requestName);
 
@@ -165,7 +170,7 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
         {
             _logger.LogError(ex, "Transacción fallida para {RequestName}, ejecutando rollback", requestName);
 
-            // await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
 
             throw;
         }
