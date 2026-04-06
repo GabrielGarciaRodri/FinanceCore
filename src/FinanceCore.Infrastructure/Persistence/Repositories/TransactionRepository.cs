@@ -31,8 +31,6 @@ public class TransactionRepository : ITransactionRepository
     public async Task<Transaction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Transactions
-            .Include(t => t.Entries)
-            .Include(t => t.Source)
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
     }
 
@@ -168,10 +166,7 @@ public class TransactionRepository : ITransactionRepository
         CancellationToken cancellationToken = default)
     {
         const string sql = @"
-            SELECT 
-                @AccountId AS AccountId,
-                @StartDate AS StartDate,
-                @EndDate AS EndDate,
+            SELECT
                 COUNT(*) AS TotalCount,
                 COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) AS TotalDebits,
                 COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS TotalCredits,
@@ -182,24 +177,30 @@ public class TransactionRepository : ITransactionRepository
             WHERE t.account_id = @AccountId
               AND t.value_date >= @StartDate
               AND t.value_date <= @EndDate
-              AND t.status NOT IN (6, 7);
+              AND t.status NOT IN ('rejected'::transaction_status, 'reversed'::transaction_status);
         ";
 
         await using var connection = _context.Database.GetDbConnection();
         await connection.OpenAsync(cancellationToken);
 
-        var summary = await connection.QueryFirstOrDefaultAsync<TransactionSummary>(sql, new
+        var result = await connection.QueryFirstOrDefaultAsync(sql, new
         {
             AccountId = accountId,
-            StartDate = startDate,
-            EndDate = endDate
+            StartDate = startDate.ToDateTime(TimeOnly.MinValue),
+            EndDate = endDate.ToDateTime(TimeOnly.MinValue)
         });
 
-        return summary ?? new TransactionSummary
+        return new TransactionSummary
         {
             AccountId = accountId,
             StartDate = startDate,
-            EndDate = endDate
+            EndDate = endDate,
+            TotalCount = (int)(result?.totalcount ?? 0L),
+            TotalDebits = (decimal)(result?.totaldebits ?? 0m),
+            TotalCredits = (decimal)(result?.totalcredits ?? 0m),
+            AverageTransactionAmount = (decimal)(result?.averagetransactionamount ?? 0m),
+            LargestDebit = (decimal)(result?.largestdebit ?? 0m),
+            LargestCredit = (decimal)(result?.largestcredit ?? 0m)
         };
     }
 

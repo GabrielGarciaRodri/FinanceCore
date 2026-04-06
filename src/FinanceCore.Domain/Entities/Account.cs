@@ -27,11 +27,20 @@ public class Account : BaseEntity, IAggregateRoot
     /// </summary>
     public string AccountName { get; private set; } = null!;
     
+    // EF Core backing fields
+    private string _currencyCode = null!;
+    private decimal _currentBalanceValue;
+    private decimal _availableBalanceValue;
+
     /// <summary>
     /// Moneda de la cuenta.
     /// </summary>
-    public Currency Currency { get; private set; } = null!;
-    
+    public Currency Currency
+    {
+        get => Currency.FromCode(_currencyCode ?? "USD");
+        private set => _currencyCode = value.Code;
+    }
+
     /// <summary>
     /// Institución financiera.
     /// </summary>
@@ -40,12 +49,20 @@ public class Account : BaseEntity, IAggregateRoot
     /// <summary>
     /// Saldo actual (contable).
     /// </summary>
-    public Money CurrentBalance { get; private set; } = null!;
-    
+    public Money CurrentBalance
+    {
+        get => Money.Create(_currentBalanceValue, Currency);
+        private set => _currentBalanceValue = value.Amount;
+    }
+
     /// <summary>
     /// Saldo disponible (puede diferir del actual por retenciones, etc.).
     /// </summary>
-    public Money AvailableBalance { get; private set; } = null!;
+    public Money AvailableBalance
+    {
+        get => Money.Create(_availableBalanceValue, Currency);
+        private set => _availableBalanceValue = value.Amount;
+    }
 
     /// <summary>
     /// Indica si la cuenta está activa.
