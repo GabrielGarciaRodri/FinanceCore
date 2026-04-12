@@ -299,7 +299,7 @@ try
 
             policy.WithOrigins(allowedOrigins)
                   .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName, "X-Requested-With");
+                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName);
         });
     });
 

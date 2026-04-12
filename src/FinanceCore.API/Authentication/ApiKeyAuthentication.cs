@@ -15,6 +15,7 @@ public static class ApiKeyDefaults
     public const string AuthenticationScheme = "ApiKey";
     public const string HeaderName = "X-Api-Key";
     public const string AuthErrorItem = "ApiKeyAuthError";
+    public const string MissingApiKeyMessage = "API key header missing.";
 }
 
 public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
@@ -46,16 +47,16 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         // Header-only API key
         if (!Request.Headers.TryGetValue(ApiKeyDefaults.HeaderName, out var headerValue))
         {
-            Context.Items[ApiKeyDefaults.AuthErrorItem] = "API key header missing.";
-            return Task.FromResult(AuthenticateResult.Fail("API key header missing."));
+            Context.Items[ApiKeyDefaults.AuthErrorItem] = ApiKeyDefaults.MissingApiKeyMessage;
+            return Task.FromResult(AuthenticateResult.Fail(ApiKeyDefaults.MissingApiKeyMessage));
         }
 
         var apiKey = headerValue.FirstOrDefault();
 
         if (string.IsNullOrEmpty(apiKey))
         {
-            Context.Items[ApiKeyDefaults.AuthErrorItem] = "API key header missing.";
-            return Task.FromResult(AuthenticateResult.Fail("API key header missing."));
+            Context.Items[ApiKeyDefaults.AuthErrorItem] = ApiKeyDefaults.MissingApiKeyMessage;
+            return Task.FromResult(AuthenticateResult.Fail(ApiKeyDefaults.MissingApiKeyMessage));
         }
 
         if (!Options.ApiKeys.TryGetValue(apiKey, out var keyConfig))
