@@ -274,7 +274,7 @@ try
                     configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
                     ?? Array.Empty<string>())
                   .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName)
+                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName, "Authorization", "X-Requested-With")
                   .AllowCredentials();
         });
     });
