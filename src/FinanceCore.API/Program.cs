@@ -293,6 +293,7 @@ try
         {
             if (allowedOrigins.Length == 0)
             {
+                // Sin orígenes configurados, negar CORS explícitamente.
                 policy.SetIsOriginAllowed(_ => false);
                 return;
             }

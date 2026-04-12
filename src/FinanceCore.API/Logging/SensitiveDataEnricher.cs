@@ -20,9 +20,14 @@ public sealed class SensitiveDataEnricher : ILogEventEnricher
 
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
     {
-        foreach (var propertyName in SensitivePropertyNames)
+        if (logEvent.Properties.Count == 0)
         {
-            if (!logEvent.Properties.ContainsKey(propertyName))
+            return;
+        }
+
+        foreach (var propertyName in logEvent.Properties.Keys)
+        {
+            if (!SensitivePropertyNames.Contains(propertyName))
             {
                 continue;
             }
