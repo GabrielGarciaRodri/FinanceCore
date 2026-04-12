@@ -7,13 +7,12 @@ namespace FinanceCore.API.Authentication;
 
 /// <summary>
 /// API Key authentication scheme for service-to-service communication.
-/// Supports both header-based and query-string-based API keys.
+/// Header-based API keys only.
 /// </summary>
 public static class ApiKeyDefaults
 {
     public const string AuthenticationScheme = "ApiKey";
     public const string HeaderName = "X-Api-Key";
-    public const string QueryParameterName = "api_key";
 }
 
 public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
@@ -42,17 +41,11 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        // Try header first, then query string
+        // Header-only API key
         string? apiKey = null;
-
         if (Request.Headers.TryGetValue(ApiKeyDefaults.HeaderName, out var headerValue))
         {
             apiKey = headerValue.FirstOrDefault();
-        }
-
-        if (string.IsNullOrEmpty(apiKey) && Request.Query.ContainsKey(ApiKeyDefaults.QueryParameterName))
-        {
-            apiKey = Request.Query[ApiKeyDefaults.QueryParameterName].FirstOrDefault();
         }
 
         if (string.IsNullOrEmpty(apiKey))

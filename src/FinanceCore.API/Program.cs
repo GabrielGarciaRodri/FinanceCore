@@ -78,8 +78,9 @@ try
                 npgsqlOptions.CommandTimeout(30);
             });
 
-        // En desarrollo, habilitar logging de queries
-        if (builder.Environment.IsDevelopment())
+        // En desarrollo, habilitar logging sensible solo si se solicita explícitamente
+        var enableSensitiveLogging = configuration.GetValue<bool>("Logging:EnableSensitiveDataLogging");
+        if (builder.Environment.IsDevelopment() && enableSensitiveLogging)
         {
             options.EnableSensitiveDataLogging();
             options.EnableDetailedErrors();
@@ -193,7 +194,7 @@ try
         // API Key authentication in Swagger
         options.AddSecurityDefinition(ApiKeyDefaults.AuthenticationScheme, new OpenApiSecurityScheme
         {
-            Description = "API Key authentication. Provide your API key in the X-Api-Key header.",
+            Description = "API Key authentication (header only). Provide your API key in the X-Api-Key header.",
             Name = ApiKeyDefaults.HeaderName,
             In = ParameterLocation.Header,
             Type = SecuritySchemeType.ApiKey,
@@ -247,15 +248,6 @@ try
                 }
             }
 
-            // Default development API key
-            if (builder.Environment.IsDevelopment())
-            {
-                options.ApiKeys["dev-api-key-financecore-2024"] = new ApiKeyConfig
-                {
-                    ClientName = "Development",
-                    Roles = new[] { "Admin", "FinanceAdmin", "Reader" }
-                };
-            }
         });
 
     services.AddAuthorization(options =>
@@ -281,8 +273,8 @@ try
             policy.WithOrigins(
                     configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
                     ?? Array.Empty<string>())
-                  .AllowAnyMethod()
-                  .AllowAnyHeader()
+                  .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName)
                   .AllowCredentials();
         });
     });
@@ -309,7 +301,44 @@ try
     });
 
     // Manejo global de errores
-    app.UseExceptionHandler("/error");
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+
+            if (exception is ValidationException validationException)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                context.Response.ContentType = "application/json";
+
+                var errors = validationException.Errors
+                    .GroupBy(e => e.PropertyName)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(e => e.ErrorMessage).ToArray());
+
+                var validationProblem = new ValidationProblemDetails(errors)
+                {
+                    Title = "Validación fallida",
+                    Status = StatusCodes.Status400BadRequest
+                };
+
+                await context.Response.WriteAsJsonAsync(validationProblem);
+                return;
+            }
+
+            Log.Error(exception, "Unhandled exception");
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new ProblemDetails
+            {
+                Title = "Error interno del servidor",
+                Status = StatusCodes.Status500InternalServerError,
+                Detail = app.Environment.IsDevelopment() ? exception?.Message : null
+            });
+        });
+    });
 
     if (app.Environment.IsDevelopment())
     {
@@ -369,18 +398,6 @@ try
 
     // Configurar jobs recurrentes
     HangfireJobsConfiguration.ConfigureRecurringJobs();
-
-    // Endpoint de error
-    app.Map("/error", (HttpContext context) =>
-    {
-        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
-        Log.Error(exception, "Unhandled exception");
-        
-        return Results.Problem(
-            title: "Error interno del servidor",
-            statusCode: 500,
-            detail: app.Environment.IsDevelopment() ? exception?.Message : null);
-    });
 
     // ═══════════════════════════════════════════════════════════════════════════
     // INICIALIZACIÓN Y EJECUCIÓN
