@@ -3,12 +3,15 @@ using FluentValidation;
 using Hangfire;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 using FinanceCore.API.Authentication;
+using FinanceCore.API.Logging;
 using FinanceCore.Application.Common.Behaviors;
+using FinanceCore.Domain.Exceptions;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
 using FinanceCore.Infrastructure.Persistence.Context;
@@ -27,6 +30,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .Enrich.WithEnvironmentName()
     .Enrich.WithMachineName()
+    .Enrich.With<SensitiveDataEnricher>()
     .Enrich.WithProperty("Application", "FinanceCore")
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}{NewLine}{Message:lj}{NewLine}{Exception}")
@@ -173,6 +177,20 @@ try
                 new System.Text.Json.Serialization.JsonStringEnumConverter());
         });
 
+    services.Configure<ApiBehaviorOptions>(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var problemDetails = new ValidationProblemDetails(context.ModelState)
+            {
+                Title = "Validación fallida",
+                Status = StatusCodes.Status400BadRequest
+            };
+
+            return new BadRequestObjectResult(problemDetails);
+        };
+    });
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Swagger/OpenAPI
     // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +279,9 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     services.AddCors(options =>
     {
+        var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+            ?? Array.Empty<string>();
+
         options.AddPolicy("Development", policy =>
         {
             policy.AllowAnyOrigin()
@@ -270,12 +291,16 @@ try
 
         options.AddPolicy("Production", policy =>
         {
-            policy.WithOrigins(
-                    configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-                    ?? Array.Empty<string>())
+            if (allowedOrigins.Length == 0)
+            {
+                // Sin orígenes configurados, negar CORS explícitamente.
+                policy.SetIsOriginAllowed(_ => false);
+                return;
+            }
+
+            policy.WithOrigins(allowedOrigins)
                   .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName, "Authorization", "X-Requested-With")
-                  .AllowCredentials();
+                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName);
         });
     });
 
@@ -317,6 +342,26 @@ try
                     .ToDictionary(
                         g => g.Key,
                         g => g.Select(e => e.ErrorMessage).ToArray());
+
+                var validationProblem = new ValidationProblemDetails(errors)
+                {
+                    Title = "Validación fallida",
+                    Status = StatusCodes.Status400BadRequest
+                };
+
+                await context.Response.WriteAsJsonAsync(validationProblem);
+                return;
+            }
+
+            if (exception is TransactionValidationException transactionValidationException)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                context.Response.ContentType = "application/json";
+
+                var errors = new Dictionary<string, string[]>
+                {
+                    { "Transaction", transactionValidationException.ValidationErrors.ToArray() }
+                };
 
                 var validationProblem = new ValidationProblemDetails(errors)
                 {

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace FinanceCore.API.Authentication;
@@ -13,6 +14,8 @@ public static class ApiKeyDefaults
 {
     public const string AuthenticationScheme = "ApiKey";
     public const string HeaderName = "X-Api-Key";
+    public const string AuthErrorItem = "ApiKeyAuthError";
+    public const string MissingApiKeyMessage = "API key header missing.";
 }
 
 public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
@@ -42,19 +45,23 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // Header-only API key
-        string? apiKey = null;
-        if (Request.Headers.TryGetValue(ApiKeyDefaults.HeaderName, out var headerValue))
+        if (!Request.Headers.TryGetValue(ApiKeyDefaults.HeaderName, out var headerValue))
         {
-            apiKey = headerValue.FirstOrDefault();
+            Context.Items[ApiKeyDefaults.AuthErrorItem] = ApiKeyDefaults.MissingApiKeyMessage;
+            return Task.FromResult(AuthenticateResult.Fail(ApiKeyDefaults.MissingApiKeyMessage));
         }
+
+        var apiKey = headerValue.FirstOrDefault();
 
         if (string.IsNullOrEmpty(apiKey))
         {
-            return Task.FromResult(AuthenticateResult.NoResult());
+            Context.Items[ApiKeyDefaults.AuthErrorItem] = ApiKeyDefaults.MissingApiKeyMessage;
+            return Task.FromResult(AuthenticateResult.Fail(ApiKeyDefaults.MissingApiKeyMessage));
         }
 
         if (!Options.ApiKeys.TryGetValue(apiKey, out var keyConfig))
         {
+            Context.Items[ApiKeyDefaults.AuthErrorItem] = "Invalid API key.";
             return Task.FromResult(AuthenticateResult.Fail("Invalid API key."));
         }
 
@@ -75,6 +82,25 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         var ticket = new AuthenticationTicket(principal, ApiKeyDefaults.AuthenticationScheme);
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        Response.StatusCode = StatusCodes.Status401Unauthorized;
+        Response.ContentType = "application/json";
+
+        var error = Context.Items.TryGetValue(ApiKeyDefaults.AuthErrorItem, out var reason)
+            ? reason?.ToString()
+            : "API key is missing or invalid.";
+
+        var problem = new ProblemDetails
+        {
+            Title = "Unauthorized",
+            Status = StatusCodes.Status401Unauthorized,
+            Detail = error
+        };
+
+        return Response.WriteAsJsonAsync(problem);
     }
 }
 
