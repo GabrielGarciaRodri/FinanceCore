@@ -357,6 +357,23 @@ public async Task ExecuteDailyCloseAsync(DateOnly closeDate, CancellationToken c
 }
 ```
 
+### API Keys (configuración recomendada)
+
+Configure las API keys mediante secretos/variables de entorno o `appsettings.*` no versionados:
+
+```json
+{
+  "Authentication": {
+    "ApiKeys": {
+      "YOUR_API_KEY": {
+        "ClientName": "IntegrationService",
+        "Roles": [ "Reader" ]
+      }
+    }
+  }
+}
+```
+
 ### Environment Variables
 
 | Variable | Description | Default |
@@ -364,6 +381,49 @@ public async Task ExecuteDailyCloseAsync(DateOnly closeDate, CancellationToken c
 | ASPNETCORE_ENVIRONMENT | Runtime environment | Development |
 | ConnectionStrings__DefaultConnection | PostgreSQL connection | - |
 | ConnectionStrings__Redis | Redis connection | localhost:6379 |
+
+## Plan operativo (Fase 0 - Baseline)
+
+### Estrategia de migraciones
+
+- **Desarrollo/QA**: EF Core aplica migraciones automáticamente al iniciar (solo en Development).
+- **Producción**: aplicar scripts SQL versionados en `database/migrations` (no auto-migrate).
+- **Fuente de verdad**: scripts SQL versionados + migraciones EF Core en el repositorio.
+
+### Checklist de seguridad mínima (dev/prod)
+
+- API keys **solo** por header `X-Api-Key`, almacenadas en secretos/variables de entorno.
+- No usar API keys hardcodeadas en el código o en archivos versionados.
+- `EnableSensitiveDataLogging` deshabilitado por defecto (solo activarlo en dev cuando sea necesario).
+- CORS en producción restringido a `Cors:AllowedOrigins` con headers/métodos explícitos.
+- Hangfire Dashboard en producción requiere autenticación y rol `FinanceAdmin`.
+- HTTPS y HSTS habilitados en producción.
+- Rotación periódica de credenciales y principio de mínimo privilegio.
+
+### Inventario de endpoints activos
+
+- `POST /api/transactions/ingest` — Ingesta de batch de transacciones.
+- `GET /api/transactions/{id}` — Obtener transacción por ID.
+- `GET /api/transactions/search` — Búsqueda con filtros y paginación.
+- `GET /api/transactions/accounts/{accountId}/summary` — Resumen por cuenta.
+- `GET /api/transactions/pending-reconciliation` — Pendientes de conciliación.
+- `GET /health` — Health checks.
+- `GET /swagger` — UI de Swagger (solo dev).
+- `GET /hangfire` — Dashboard de jobs (restricto en prod).
+
+### Inventario de jobs activos
+
+- `transaction-file-ingestion` — Cada 15 minutos.
+- `daily-close` — 23:59 diario.
+- `exchange-rate-update` — Cada hora (8am-6pm, L-V).
+- `data-cleanup` — Domingos 03:00.
+- `daily-reconciliation` — On-demand via `ScheduleReconciliation`.
+
+### Criterios de aceptación por módulo (baseline)
+
+- **Ingesta**: batch procesa todos los registros, reporta `Succeeded/Failed/Duplicates` y mueve archivos a `processed/error`.
+- **FX**: job de actualización persiste tasas y `GetRateAsync` devuelve la última tasa <= fecha.
+- **Reconciliación**: cierre diario genera balances y registra descuadres; reconciliación devuelve métricas de matched/unmatched.
 
 ## Development
 
