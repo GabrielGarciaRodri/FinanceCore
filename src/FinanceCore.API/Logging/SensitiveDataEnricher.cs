@@ -1,3 +1,4 @@
+using System.Linq;
 using Serilog.Core;
 using Serilog.Events;
 
@@ -25,13 +26,17 @@ public sealed class SensitiveDataEnricher : ILogEventEnricher
             return;
         }
 
-        foreach (var propertyName in logEvent.Properties.Keys)
-        {
-            if (!SensitivePropertyNames.Contains(propertyName))
-            {
-                continue;
-            }
+        var sensitiveKeys = logEvent.Properties.Keys
+            .Where(SensitivePropertyNames.Contains)
+            .ToList();
 
+        if (sensitiveKeys.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var propertyName in sensitiveKeys)
+        {
             var redactedProperty = propertyFactory.CreateProperty(propertyName, "***");
             logEvent.AddOrUpdateProperty(redactedProperty);
         }
