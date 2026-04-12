@@ -359,7 +359,8 @@ public async Task ExecuteDailyCloseAsync(DateOnly closeDate, CancellationToken c
 
 ### API Keys (configuración recomendada)
 
-Configure las API keys mediante secretos/variables de entorno o `appsettings.*` no versionados:
+Configure las API keys **solo** mediante secretos/variables de entorno o `appsettings.*` no versionados.
+No versionar keys en el repositorio ni en `appsettings.json`.
 
 ```json
 {
@@ -372,6 +373,23 @@ Configure las API keys mediante secretos/variables de entorno o `appsettings.*` 
     }
   }
 }
+```
+
+#### Uso del header (obligatorio)
+
+Todas las solicitudes autenticadas deben incluir el header `X-Api-Key`.
+No se aceptan API keys en query string ni en body.
+
+```http
+GET /api/transactions/search
+X-Api-Key: YOUR_API_KEY
+```
+
+#### Variables de entorno (ejemplo)
+
+```bash
+Authentication__ApiKeys__YOUR_API_KEY__ClientName=IntegrationService
+Authentication__ApiKeys__YOUR_API_KEY__Roles__0=Reader
 ```
 
 ### Environment Variables
