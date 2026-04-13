@@ -37,6 +37,13 @@ public class TransactionIngestionJob
     public async Task ProcessPendingFilesAsync(CancellationToken cancellationToken)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
+        var startedAt = DateTimeOffset.UtcNow;
+        var filesProcessed = 0;
+        var filesFailed = 0;
+        var totalRowsRead = 0;
+        var totalSucceeded = 0;
+        var totalFailedRows = 0;
+        var totalDuplicates = 0;
         
         _logger.LogInformation("[Job:{JobId}] Iniciando ingesta de archivos", jobId);
 
@@ -59,6 +66,12 @@ public class TransactionIngestionJob
                 try
                 {
                     await ProcessFileAsync(file, jobId, cancellationToken);
+                    var metrics = await ProcessFileAsync(file, jobId, cancellationToken);
+                    filesProcessed++;
+                    totalRowsRead += metrics.TotalRows;
+                    totalSucceeded += metrics.Succeeded;
+                    totalFailedRows += metrics.Failed;
+                    totalDuplicates += metrics.Duplicates;
                 }
                 catch (Exception ex)
                 {
@@ -67,8 +80,21 @@ public class TransactionIngestionJob
                         jobId, file.FileName);
                     
                     await _fileService.MoveToErrorAsync(file, ex.Message, cancellationToken);
+                    filesFailed++;
                 }
             }
+            var duration = DateTimeOffset.UtcNow - startedAt;
+            _logger.LogInformation(
+                "[Job:{JobId}] Fin ingesta. FilesProcessed={FilesProcessed}, FilesFailed={FilesFailed}, " +
+                "RowsRead={RowsRead}, Succeeded={Succeeded}, Failed={Failed}, Duplicates={Duplicates}, DurationMs={DurationMs}",
+                jobId,
+                filesProcessed,
+                filesFailed,
+                totalRowsRead,
+                totalSucceeded,
+                totalFailedRows,
+                totalDuplicates,
+                duration.TotalMilliseconds);
         }
         catch (Exception ex)
         {
@@ -77,7 +103,7 @@ public class TransactionIngestionJob
         }
     }
 
-    private async Task ProcessFileAsync(
+    private async Task<FileIngestionMetrics> ProcessFileAsync(
         PendingFile file, 
         string jobId,
         CancellationToken cancellationToken)
@@ -97,11 +123,11 @@ public class TransactionIngestionJob
         if (!transactions.Any())
         {
             _logger.LogWarning(
-                "[Job:{JobId}] Archivo {FileName} sin transacciones válidas",
+                "[Job:{JobId}] Archivo {FileName} sin transacciones válidas. Se moverá a error.",
                 jobId, file.FileName);
             
-            await _fileService.MoveToProcessedAsync(file, cancellationToken);
-            return;
+            await _fileService.MoveToErrorAsync(file, "Archivo sin transacciones válidas", cancellationToken);
+            return new FileIngestionMetrics(0, 0, 0, 0);
         }
 
         // Enviar comando de ingesta
@@ -131,17 +157,20 @@ public class TransactionIngestionJob
                 result.Value.Duplicates);
 
             await _fileService.MoveToProcessedAsync(file, cancellationToken);
+            return new FileIngestionMetrics(
+                result.Value.TotalReceived,
+                result.Value.Succeeded,
+                result.Value.Failed,
+                result.Value.Duplicates);
         }
-        else
-        {
-            _logger.LogError(
-                "[Job:{JobId}] Error procesando archivo {FileName}: {Error}",
-                jobId, file.FileName, result.Error);
-
-            await _fileService.MoveToErrorAsync(file, result.Error!, cancellationToken);
-        }
+        _logger.LogError(
+            "[Job:{JobId}] Error procesando archivo {FileName}: {Error}",
+            jobId, file.FileName, result.Error);
+        await _fileService.MoveToErrorAsync(file, result.Error!, cancellationToken);
+        return new FileIngestionMetrics(transactions.Count, 0, transactions.Count, 0);
     }
 }
+public record FileIngestionMetrics(int TotalRows, int Succeeded, int Failed, int Duplicates);
 
 /// <summary>
 /// Job de cierre diario de cuentas.

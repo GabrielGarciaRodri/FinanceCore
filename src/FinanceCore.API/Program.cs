@@ -104,6 +104,7 @@ try
     services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
     services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
     services.AddScoped<IUnitOfWork, UnitOfWork>();
+    services.Configure<FileIngestionOptions>(configuration.GetSection("FinanceCore:FileIngestion"));
     services.AddScoped<IFileIngestionService, FileIngestionService>();
     services.AddScoped<IExchangeRateProvider, ExchangeRateProvider>();
     services.AddScoped<IReconciliationEngine, ReconciliationEngine>();

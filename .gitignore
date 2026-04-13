@@ -483,3 +483,4 @@ $RECYCLE.BIN/
 bin/
 obj/
 *.user
+.claude/
