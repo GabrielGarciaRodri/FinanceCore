@@ -78,7 +78,6 @@ try
             dataSource,
             npgsqlOptions =>
             {
-                npgsqlOptions.MigrationsAssembly(typeof(FinanceCoreDbContext).Assembly.FullName);
                 npgsqlOptions.CommandTimeout(30);
             });
 
@@ -448,17 +447,6 @@ try
     // ═══════════════════════════════════════════════════════════════════════════
     // INICIALIZACIÓN Y EJECUCIÓN
     // ═══════════════════════════════════════════════════════════════════════════
-
-    // Aplicar migraciones automáticamente en desarrollo
-    if (app.Environment.IsDevelopment())
-    {
-        using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<FinanceCoreDbContext>();
-        
-        Log.Information("Aplicando migraciones de base de datos...");
-        await dbContext.Database.MigrateAsync();
-        Log.Information("Migraciones aplicadas correctamente.");
-    }
 
     Log.Information("Aplicación iniciada. Escuchando en: {Urls}", 
         string.Join(", ", app.Urls));

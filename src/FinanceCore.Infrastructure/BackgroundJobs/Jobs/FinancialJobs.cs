@@ -65,7 +65,6 @@ public class TransactionIngestionJob
             {
                 try
                 {
-                    await ProcessFileAsync(file, jobId, cancellationToken);
                     var metrics = await ProcessFileAsync(file, jobId, cancellationToken);
                     filesProcessed++;
                     totalRowsRead += metrics.TotalRows;
