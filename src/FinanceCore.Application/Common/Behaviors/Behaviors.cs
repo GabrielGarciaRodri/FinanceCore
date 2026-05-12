@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Text.Json;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using FinanceCore.Domain.Repositories;
 
@@ -184,10 +186,12 @@ public class TransactionBehavior<TRequest, TResponse> : IPipelineBehavior<TReque
 public class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IRequest<TResponse>
 {
+    private readonly IDistributedCache _cache;
     private readonly ILogger<CachingBehavior<TRequest, TResponse>> _logger;
 
-    public CachingBehavior(ILogger<CachingBehavior<TRequest, TResponse>> logger)
+    public CachingBehavior(IDistributedCache cache, ILogger<CachingBehavior<TRequest, TResponse>> logger)
     {
+        _cache = cache;
         _logger = logger;
     }
 
@@ -205,23 +209,27 @@ public class CachingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         var cacheKey = cacheableQuery.CacheKey;
         var requestName = typeof(TRequest).Name;
 
-        // Aquí se integraría con IDistributedCache
-        // var cachedResponse = await _cache.GetAsync(cacheKey, cancellationToken);
-        // if (cachedResponse != null)
-        // {
-        //     _logger.LogDebug("Cache HIT para {RequestName} con key {CacheKey}", requestName, cacheKey);
-        //     return JsonSerializer.Deserialize<TResponse>(cachedResponse);
-        // }
+        var cachedBytes = await _cache.GetAsync(cacheKey, cancellationToken);
+        if (cachedBytes is { Length: > 0 })
+        {
+            _logger.LogDebug("Cache HIT para {RequestName} [{CacheKey}]", requestName, cacheKey);
+            var cached = JsonSerializer.Deserialize<TResponse>(cachedBytes);
+            if (cached is not null)
+                return cached;
+        }
 
-        _logger.LogDebug("Cache MISS para {RequestName} con key {CacheKey}", requestName, cacheKey);
+        _logger.LogDebug("Cache MISS para {RequestName} [{CacheKey}]", requestName, cacheKey);
 
         var response = await next();
 
-        // await _cache.SetAsync(cacheKey, JsonSerializer.SerializeToUtf8Bytes(response), 
-        //     new DistributedCacheEntryOptions
-        //     {
-        //         AbsoluteExpirationRelativeToNow = cacheableQuery.CacheDuration
-        //     }, cancellationToken);
+        if (response is not null)
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(response);
+            await _cache.SetAsync(cacheKey, bytes, new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = cacheableQuery.CacheDuration
+            }, cancellationToken);
+        }
 
         return response;
     }

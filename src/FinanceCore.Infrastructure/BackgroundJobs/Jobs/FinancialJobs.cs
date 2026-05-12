@@ -1,10 +1,12 @@
 using Hangfire;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.Exceptions;
 using FinanceCore.Application.Transactions.Commands.IngestTransactions;
+using FinanceCore.Infrastructure.ExchangeRates;
 
 namespace FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 
@@ -387,38 +389,51 @@ public class ExchangeRateUpdateJob
 {
     private readonly IExchangeRateProvider _provider;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ExchangeRateOptions _options;
     private readonly ILogger<ExchangeRateUpdateJob> _logger;
 
     public ExchangeRateUpdateJob(
         IExchangeRateProvider provider,
         IUnitOfWork unitOfWork,
+        IOptions<ExchangeRateOptions> options,
         ILogger<ExchangeRateUpdateJob> logger)
     {
         _provider = provider;
         _unitOfWork = unitOfWork;
+        _options = options.Value;
         _logger = logger;
     }
 
     /// <summary>
     /// Actualiza tipos de cambio desde proveedor externo.
-    /// Se ejecuta cada hora durante el día.
+    /// Se ejecuta cada hora durante el día. Fallback silencioso si el proveedor falla.
     /// </summary>
-    [AutomaticRetry(Attempts = 5, DelaysInSeconds = new[] { 30, 60, 120, 300, 600 })]
+    [AutomaticRetry(Attempts = 0)]
     public async Task UpdateExchangeRatesAsync(CancellationToken cancellationToken)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
-        
         _logger.LogInformation("[ExchangeRate:{JobId}] Actualizando tipos de cambio", jobId);
+
+        var baseCurrency = _options.BaseCurrency;
+        var currencies = _options.SupportedCurrencies;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        IEnumerable<ExchangeRateData> rates;
 
         try
         {
-            // Monedas que nos interesan
-            var currencies = new[] { "USD", "EUR", "COP", "MXN", "BRL" };
-            var baseCurrency = "USD";
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            rates = await _provider.GetLatestRatesAsync(baseCurrency, currencies, cancellationToken);
+        }
+        catch (ExchangeRateProviderException ex)
+        {
+            _logger.LogWarning(
+                "[ExchangeRate:{JobId}] Proveedor no disponible — usando rates existentes en DB. Motivo: {Message}",
+                jobId, ex.Message);
+            return;
+        }
 
-            var rates = await _provider.GetLatestRatesAsync(baseCurrency, currencies, cancellationToken);
-
+         try
+        {
             foreach (var rate in rates)
             {
                 var exchangeRate = new Domain.Entities.ExchangeRate
@@ -426,23 +441,23 @@ public class ExchangeRateUpdateJob
                     FromCurrency = rate.FromCurrency,
                     ToCurrency = rate.ToCurrency,
                     Rate = rate.Rate,
-                    InverseRate = 1 / rate.Rate,
+                    InverseRate = rate.Rate > 0 ? Math.Round(1m / rate.Rate, 8) : 0,
                     EffectiveDate = today,
                     Source = _provider.ProviderName
                 };
-
+                
                 await _unitOfWork.ExchangeRates.AddAsync(exchangeRate, cancellationToken);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "[ExchangeRate:{JobId}] Actualizados {Count} tipos de cambio",
-                jobId, rates.Count());
+                "[ExchangeRate:{JobId}] Actualizados {Count} tipos de cambio desde {Provider}",
+                jobId, rates.Count(), _provider.ProviderName);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[ExchangeRate:{JobId}] Error actualizando tipos de cambio", jobId);
+            _logger.LogError(ex, "[ExchangeRate:{JobId}] Error persistiendo tipos de cambio", jobId);
             throw;
         }
     }

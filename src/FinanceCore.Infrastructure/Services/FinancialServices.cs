@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using FinanceCore.Application.Transactions.Commands.IngestTransactions;
@@ -260,9 +261,14 @@ public class DailyBalanceRepository : IDailyBalanceRepository
 public class ExchangeRateRepository : IExchangeRateRepository
 {
     private readonly FinanceCoreDbContext _context;
+    private readonly IMemoryCache _cache;
+    private static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromMinutes(60);
 
-    public ExchangeRateRepository(FinanceCoreDbContext context) => _context = context;
-
+    public ExchangeRateRepository(FinanceCoreDbContext context, IMemoryCache cache)
+        {
+            _context = context;
+            _cache = cache;
+        }
     public async Task<ExchangeRate?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.ExchangeRates.FindAsync(new object[] { id }, ct);
 
@@ -295,16 +301,38 @@ public class ExchangeRateRepository : IExchangeRateRepository
     }
 
     public async Task<ExchangeRate?> GetRateAsync(string from, string to, DateOnly date, CancellationToken ct = default)
-        => await _context.ExchangeRates
+    {
+        var key = $"fx:rate:{from}:{to}:{date:yyyy-MM-dd}";
+        if (_cache.TryGetValue(key, out ExchangeRate? cached))
+            return cached;
+
+        var rate = await _context.ExchangeRates
             .Where(e => e.FromCurrency == from && e.ToCurrency == to && e.EffectiveDate <= date)
             .OrderByDescending(e => e.EffectiveDate)
             .FirstOrDefaultAsync(ct);
+        
+        if (rate != null)
+            _cache.Set(key, rate, DefaultCacheTtl);
+
+        return rate;
+    }
 
     public async Task<ExchangeRate?> GetLatestRateAsync(string from, string to, CancellationToken ct = default)
-        => await _context.ExchangeRates
+    {
+        var key = $"fx:latest:{from}:{to}";
+        if (_cache.TryGetValue(key, out ExchangeRate? cached))
+            return cached;
+
+        var rate = await _context.ExchangeRates
             .Where(e => e.FromCurrency == from && e.ToCurrency == to)
             .OrderByDescending(e => e.EffectiveDate)
             .FirstOrDefaultAsync(ct);
+
+        if (rate != null)
+            _cache.Set(key, rate, DefaultCacheTtl);
+
+        return rate;
+    }
 
     public async Task<decimal> ConvertAsync(decimal amount, string from, string to, DateOnly date, CancellationToken ct = default)
     {
@@ -329,11 +357,22 @@ public class ExchangeRateRepository : IExchangeRateRepository
             .ToListAsync(ct);
 
     public async Task AddAsync(ExchangeRate rate, CancellationToken ct = default)
-        => await _context.ExchangeRates.AddAsync(rate, ct);
+    {
+        _cache.Remove($"fx:latest:{rate.FromCurrency}:{rate.ToCurrency}");
+        _cache.Remove($"fx:rate:{rate.FromCurrency}:{rate.ToCurrency}:{rate.EffectiveDate:yyyy-MM-dd}");
+        await _context.ExchangeRates.AddAsync(rate, ct);
+    }
 
     public async Task AddRangeAsync(IEnumerable<ExchangeRate> rates, CancellationToken ct = default)
-        => await _context.ExchangeRates.AddRangeAsync(rates, ct);
-
+    {
+        var rateList = rates as IList<ExchangeRate> ?? rates.ToList();
+        foreach (var r in rateList)
+        {
+            _cache.Remove($"fx:latest:{r.FromCurrency}:{r.ToCurrency}");
+            _cache.Remove($"fx:rate:{r.FromCurrency}:{r.ToCurrency}:{r.EffectiveDate:yyyy-MM-dd}");
+        }
+        await _context.ExchangeRates.AddRangeAsync(rateList, ct);
+    }
     public async Task<IReadOnlyList<ExchangeRate>> GetHistoryAsync(
         string from, string to, DateOnly startDate, DateOnly endDate, CancellationToken ct = default)
         => await GetHistoricalRatesAsync(from, to, startDate, endDate, ct);
@@ -1155,46 +1194,6 @@ private static string? ReadValue(Dictionary<string, string> row, params string[]
 
         return rawValue ?? string.Empty;
     }
-}
-
-#endregion
-
-#region Exchange Rate Provider
-
-[Obsolete("ExchangeRateProvider es un proveedor mock para desarrollo/testing. No usar en producción.")]
-public class ExchangeRateProvider : IExchangeRateProvider
-{
-    private readonly ILogger<ExchangeRateProvider> _logger;
-
-    public ExchangeRateProvider(ILogger<ExchangeRateProvider> logger)
-    {
-        _logger = logger;
-        _logger.LogWarning("ExchangeRateProvider mock está habilitado. Configurar proveedor real para producción.");
-    }
-
-    public string ProviderName => "MockProvider";
-
-    public Task<IEnumerable<ExchangeRateData>> GetLatestRatesAsync(
-        string baseCurrency, string[] targetCurrencies, CancellationToken ct = default)
-    {
-        _logger.LogInformation("Fetching rates for {Base}", baseCurrency);
-        
-        var rates = targetCurrencies.Select(target => 
-            new ExchangeRateData(baseCurrency, target, GetMockRate(baseCurrency, target)));
-
-        return Task.FromResult(rates);
-    }
-
-    private static decimal GetMockRate(string from, string to) => (from, to) switch
-    {
-        ("USD", "COP") => 4150.00m,
-        ("USD", "EUR") => 0.92m,
-        ("USD", "MXN") => 17.15m,
-        ("USD", "BRL") => 4.95m,
-        ("EUR", "USD") => 1.09m,
-        ("COP", "USD") => 0.00024m,
-        _ => 1.00m
-    };
 }
 
 #endregion

@@ -18,6 +18,7 @@ using FinanceCore.Infrastructure.Persistence.Context;
 using FinanceCore.Infrastructure.Persistence.Repositories;
 using FinanceCore.Infrastructure.Services;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
+using FinanceCore.Infrastructure.ExchangeRates;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE SERILOG (antes de construir el host)
@@ -104,8 +105,22 @@ try
     services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
     services.AddScoped<IUnitOfWork, UnitOfWork>();
     services.Configure<FileIngestionOptions>(configuration.GetSection("FinanceCore:FileIngestion"));
+    services.Configure<ExchangeRateOptions>(configuration.GetSection(ExchangeRateOptions.SectionName));
     services.AddScoped<IFileIngestionService, FileIngestionService>();
-    services.AddScoped<IExchangeRateProvider, ExchangeRateProvider>();
+    services.AddHttpClient<IExchangeRateProvider, ExchangeRateApiProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(
+                configuration.GetValue<int>("FinanceCore:ExchangeRates:TimeoutSeconds", 10));
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.Retry.MaxRetryAttempts =
+                configuration.GetValue<int>("FinanceCore:ExchangeRates:RetryAttempts", 3);
+            options.Retry.Delay = TimeSpan.FromSeconds(2);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+            options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(60);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+        });
     services.AddScoped<IReconciliationEngine, ReconciliationEngine>();
     services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
 
@@ -121,6 +136,7 @@ try
         // Pipeline behaviors (orden importa!)
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(CachingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
     });
 
@@ -135,8 +151,11 @@ try
     services.AddHangfireServices(configuration);
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Caché (Redis o Memory)
+    // Caché (IMemoryCache siempre disponible; IDistributedCache via Redis o memoria)
     // ─────────────────────────────────────────────────────────────────────────────
+    
+    services.AddMemoryCache();
+
     var redisConnection = configuration.GetConnectionString("Redis");
     if (!string.IsNullOrEmpty(redisConnection))
     {
@@ -148,7 +167,7 @@ try
     }
     else
     {
-        services.AddMemoryCache();
+        services.AddDistributedMemoryCache();
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
