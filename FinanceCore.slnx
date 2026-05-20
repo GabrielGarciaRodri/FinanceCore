@@ -5,4 +5,8 @@
     <Project Path="src/FinanceCore.Domain/FinanceCore.Domain.csproj" />
     <Project Path="src/FinanceCore.Infrastructure/FinanceCore.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FinanceCore.Domain.Tests/FinanceCore.Domain.Tests.csproj" />
+    <Project Path="tests/FinanceCore.Infrastructure.IntegrationTests/FinanceCore.Infrastructure.IntegrationTests.csproj" />
+  </Folder>
 </Solution>
