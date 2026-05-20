@@ -14,8 +14,11 @@ using FinanceCore.Application.Common.Behaviors;
 using FinanceCore.Domain.Exceptions;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
+using FinanceCore.Infrastructure.FileIngestion;
+using FinanceCore.Infrastructure.Persistence;
 using FinanceCore.Infrastructure.Persistence.Context;
 using FinanceCore.Infrastructure.Persistence.Repositories;
+using FinanceCore.Infrastructure.Reconciliations;
 using FinanceCore.Infrastructure.Services;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 using FinanceCore.Infrastructure.ExchangeRates;
@@ -103,9 +106,12 @@ try
     services.AddScoped<IAccountRepository, AccountRepository>();
     services.AddScoped<IDailyBalanceRepository, DailyBalanceRepository>();
     services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
+    services.AddScoped<IReconciliationRepository, ReconciliationRepository>();
     services.AddScoped<IUnitOfWork, UnitOfWork>();
     services.Configure<FileIngestionOptions>(configuration.GetSection("FinanceCore:FileIngestion"));
     services.Configure<ExchangeRateOptions>(configuration.GetSection(ExchangeRateOptions.SectionName));
+    services.Configure<FinanceCore.Infrastructure.Reconciliations.ReconciliationOptions>(
+        configuration.GetSection(FinanceCore.Infrastructure.Reconciliations.ReconciliationOptions.SectionName));
     services.AddScoped<IFileIngestionService, FileIngestionService>();
     services.AddHttpClient<IExchangeRateProvider, ExchangeRateApiProvider>(client =>
         {

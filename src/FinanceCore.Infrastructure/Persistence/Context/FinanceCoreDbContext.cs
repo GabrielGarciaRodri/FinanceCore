@@ -26,24 +26,34 @@ public class FinanceCoreDbContext : DbContext
     public DbSet<DailyBalance> DailyBalances => Set<DailyBalance>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<Institution> Institutions => Set<Institution>();
+    public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
+    public DbSet<ReconciliationDiscrepancy> ReconciliationDiscrepancies => Set<ReconciliationDiscrepancy>();
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // Dispatch domain events before saving
-        if (_domainEventDispatcher != null)
-        {
-            var entitiesWithEvents = ChangeTracker.Entries<BaseEntity>()
-                .Where(e => e.Entity.DomainEvents.Any())
-                .Select(e => e.Entity)
-                .ToList();
+        // Capturar eventos ANTES del commit, pero publicarlos DESPUÉS.
+        // Patrón post-commit dispatch: si SaveChanges falla, los handlers no corren.
+        var entitiesWithEvents = ChangeTracker.Entries<BaseEntity>()
+            .Select(e => e.Entity)
+            .Where(e => e.DomainEvents.Count > 0)
+            .ToList();
 
-            if (entitiesWithEvents.Count > 0)
-            {
-                await _domainEventDispatcher.DispatchEventsAsync(entitiesWithEvents, cancellationToken);
-            }
+        var pendingEvents = entitiesWithEvents
+            .SelectMany(e => e.DomainEvents)
+            .ToList();
+
+        // Limpiar antes de guardar para evitar re-emisión si el ChangeTracker reusa entidades.
+        foreach (var entity in entitiesWithEvents)
+            entity.ClearDomainEvents();
+
+        var affected = await base.SaveChangesAsync(cancellationToken);
+
+        if (_domainEventDispatcher != null && pendingEvents.Count > 0)
+        {
+            await _domainEventDispatcher.DispatchAsync(pendingEvents, cancellationToken);
         }
 
-        return await base.SaveChangesAsync(cancellationToken);
+        return affected;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -68,6 +78,8 @@ public class FinanceCoreDbContext : DbContext
         modelBuilder.ApplyConfiguration(new DailyBalanceConfiguration());
         modelBuilder.ApplyConfiguration(new ExchangeRateConfiguration());
         modelBuilder.ApplyConfiguration(new InstitutionConfiguration());
+        modelBuilder.ApplyConfiguration(new ReconciliationConfiguration());
+        modelBuilder.ApplyConfiguration(new ReconciliationDiscrepancyConfiguration());
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
@@ -212,6 +224,75 @@ public class ExchangeRateConfiguration : IEntityTypeConfiguration<ExchangeRate>
         builder.Property(e => e.Rate).HasPrecision(18, 8).IsRequired();
         builder.Property(e => e.InverseRate).HasPrecision(18, 8);
         builder.Property(e => e.Source).HasMaxLength(50);
+    }
+}
+
+public class ReconciliationConfiguration : IEntityTypeConfiguration<Reconciliation>
+{
+    public void Configure(EntityTypeBuilder<Reconciliation> builder)
+    {
+        builder.ToTable("reconciliations");
+        builder.HasKey(r => r.Id);
+
+        builder.HasIndex(r => new { r.AccountId, r.ReconciliationDate })
+            .IsUnique()
+            .HasDatabaseName("uq_reconciliation_date_account");
+
+        builder.HasIndex(r => r.ReconciliationDate).HasDatabaseName("idx_reconciliation_date");
+        builder.HasIndex(r => r.Status).HasDatabaseName("idx_reconciliation_status");
+
+        builder.Property(r => r.ReconciliationDate).IsRequired();
+        builder.Property(r => r.Status).IsRequired();
+        builder.Property(r => r.ProcessedBy).HasMaxLength(100).IsRequired();
+        builder.Property(r => r.ApprovedBy).HasMaxLength(100);
+        builder.Property(r => r.TotalInternalAmount).HasPrecision(18, 4);
+        builder.Property(r => r.TotalExternalAmount).HasPrecision(18, 4);
+        builder.Property(r => r.DiscrepancyAmount).HasPrecision(18, 4);
+        builder.Property(r => r.Notes).HasColumnType("text");
+        builder.Property(r => r.ResolutionNotes).HasColumnType("text");
+
+        builder.Ignore(r => r.DomainEvents);
+        builder.Ignore(r => r.Account);
+
+        builder.Metadata
+            .FindNavigation(nameof(Reconciliation.Discrepancies))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(r => r.Discrepancies)
+            .WithOne()
+            .HasForeignKey(d => d.ReconciliationId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReconciliationDiscrepancyConfiguration : IEntityTypeConfiguration<ReconciliationDiscrepancy>
+{
+    public void Configure(EntityTypeBuilder<ReconciliationDiscrepancy> builder)
+    {
+        builder.ToTable("reconciliation_discrepancies");
+        builder.HasKey(d => d.Id);
+
+        builder.HasIndex(d => d.ReconciliationId).HasDatabaseName("idx_discrepancy_reconciliation");
+        builder.HasIndex(d => d.IsResolved).HasDatabaseName("idx_discrepancy_resolved");
+
+        builder.Property(d => d.DiscrepancyType)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired();
+
+        builder.Property(d => d.ResolutionType)
+            .HasConversion<string?>()
+            .HasMaxLength(50);
+
+        builder.Property(d => d.ExternalReference).HasMaxLength(100);
+        builder.Property(d => d.ResolvedBy).HasMaxLength(100);
+        builder.Property(d => d.ResolutionNotes).HasColumnType("text");
+
+        builder.Property(d => d.InternalAmount).HasPrecision(18, 4);
+        builder.Property(d => d.ExternalAmount).HasPrecision(18, 4);
+        builder.Property(d => d.DifferenceAmount).HasPrecision(18, 4);
+
+        builder.Ignore(d => d.DomainEvents);
     }
 }
 

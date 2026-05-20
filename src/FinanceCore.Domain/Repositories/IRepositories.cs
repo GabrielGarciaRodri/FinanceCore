@@ -247,6 +247,41 @@ public interface IExchangeRateRepository
 }
 
 /// <summary>
+/// Repositorio para conciliaciones.
+/// </summary>
+public interface IReconciliationRepository
+{
+    Task<Reconciliation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<Reconciliation?> GetByAccountAndDateAsync(
+        Guid accountId,
+        DateOnly date,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Reconciliation>> GetByAccountAsync(
+        Guid accountId,
+        DateOnly? startDate = null,
+        DateOnly? endDate = null,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Reconciliation>> SearchAsync(
+        DateOnly? startDate = null,
+        DateOnly? endDate = null,
+        ReconciliationStatus? status = null,
+        Guid? accountId = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ReconciliationDiscrepancy>> GetDiscrepanciesAsync(
+        Guid reconciliationId,
+        CancellationToken cancellationToken = default);
+
+    void Add(Reconciliation reconciliation);
+    void Update(Reconciliation reconciliation);
+}
+
+/// <summary>
 /// Unit of Work para coordinar transacciones de base de datos.
 /// </summary>
 public interface IUnitOfWork : IDisposable
@@ -255,6 +290,7 @@ public interface IUnitOfWork : IDisposable
     IAccountRepository Accounts { get; }
     IDailyBalanceRepository DailyBalances { get; }
     IExchangeRateRepository ExchangeRates { get; }
+    IReconciliationRepository Reconciliations { get; }
     
     /// <summary>
     /// Guarda todos los cambios pendientes.

@@ -181,12 +181,15 @@ public class DailyCloseJob
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<DailyCloseJob> _logger;
+    private readonly Infrastructure.Reconciliations.ReconciliationOptions _reconciliationOptions;
 
     public DailyCloseJob(
         IUnitOfWork unitOfWork,
+        IOptions<Infrastructure.Reconciliations.ReconciliationOptions> reconciliationOptions,
         ILogger<DailyCloseJob> logger)
     {
         _unitOfWork = unitOfWork;
+        _reconciliationOptions = reconciliationOptions.Value;
         _logger = logger;
     }
 
@@ -210,6 +213,7 @@ public class DailyCloseJob
         var accounts = await _unitOfWork.Accounts.GetActiveAccountsAsync(cancellationToken);
         var processed = 0;
         var errors = new List<string>();
+        var accountsToReconcile = new List<Guid>();
 
         foreach (var account in accounts)
         {
@@ -217,6 +221,7 @@ public class DailyCloseJob
             {
                 await ProcessAccountCloseAsync(account.Id, closeDate, cancellationToken);
                 processed++;
+                accountsToReconcile.Add(account.Id);
             }
             catch (Exception ex)
             {
@@ -231,6 +236,19 @@ public class DailyCloseJob
         _logger.LogInformation(
             "[DailyClose:{JobId}] Cierre completado. Procesadas: {Processed}/{Total}, Errores: {Errors}",
             jobId, processed, accounts.Count, errors.Count);
+
+        if (_reconciliationOptions.AutoReconcileAfterClose && accountsToReconcile.Count > 0)
+        {
+            foreach (var accId in accountsToReconcile)
+            {
+                Hangfire.BackgroundJob.Enqueue<DailyReconciliationJob>(
+                    j => j.ReconcileAccountAsync(accId, closeDate, CancellationToken.None));
+            }
+
+            _logger.LogInformation(
+                "[DailyClose:{JobId}] Encoladas {Count} conciliaciones automáticas para {Date}",
+                jobId, accountsToReconcile.Count, closeDate);
+        }
 
         if (errors.Any())
         {
@@ -319,22 +337,22 @@ public class DailyCloseJob
 /// </summary>
 public class DailyReconciliationJob
 {
-    private readonly IUnitOfWork _unitOfWork;
     private readonly IReconciliationEngine _reconciliationEngine;
     private readonly ILogger<DailyReconciliationJob> _logger;
+    private readonly Infrastructure.Reconciliations.ReconciliationOptions _options;
 
     public DailyReconciliationJob(
-        IUnitOfWork unitOfWork,
         IReconciliationEngine reconciliationEngine,
+        IOptions<Infrastructure.Reconciliations.ReconciliationOptions> options,
         ILogger<DailyReconciliationJob> logger)
     {
-        _unitOfWork = unitOfWork;
         _reconciliationEngine = reconciliationEngine;
+        _options = options.Value;
         _logger = logger;
     }
 
     /// <summary>
-    /// Ejecuta conciliación automática para una cuenta y fecha.
+    /// Ejecuta conciliación automática (balance-based) para una cuenta y fecha.
     /// </summary>
     [AutomaticRetry(Attempts = 3)]
     public async Task ReconcileAccountAsync(
@@ -343,10 +361,11 @@ public class DailyReconciliationJob
         CancellationToken cancellationToken)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
-        
+        var accountRef = accountId.ToString("N")[..8];
+
         _logger.LogInformation(
-            "[Reconciliation:{JobId}] Iniciando conciliación cuenta {AccountId} fecha {Date}",
-            jobId, accountId, reconciliationDate);
+            "[Reconciliation:{JobId}] Iniciando conciliación cuenta {AccountRef} fecha {Date}",
+            jobId, accountRef, reconciliationDate);
 
         try
         {
@@ -356,27 +375,31 @@ public class DailyReconciliationJob
                 cancellationToken);
 
             _logger.LogInformation(
-                "[Reconciliation:{JobId}] Completada. Matched: {Matched}, Unmatched: {Unmatched}, Discrepancy: {Discrepancy}",
-                jobId, result.MatchedCount, result.UnmatchedCount, result.DiscrepancyAmount);
+                "[Reconciliation:{JobId}] Completada. ReconciliationId={ReconciliationId}, " +
+                "Matched={Matched}, UnmatchedInternal={UnmatchedInternal}, UnmatchedExternal={UnmatchedExternal}, " +
+                "Discrepancy={Discrepancy}, DiscrepancyCount={DiscrepancyCount}, Status={Status}",
+                jobId,
+                result.ReconciliationId,
+                result.MatchedCount,
+                result.UnmatchedInternal,
+                result.UnmatchedExternal,
+                result.DiscrepancyAmount,
+                result.DiscrepancyCount,
+                result.Status);
 
-            if (result.HasDiscrepancies)
+            if (result.HasDiscrepancies &&
+                Math.Abs(result.DiscrepancyAmount) >= _options.SignificantDiscrepancyThreshold)
             {
-                // Escalar descuadres significativos
-                if (Math.Abs(result.DiscrepancyAmount) > 1000)
-                {
-                    _logger.LogWarning(
-                        "[Reconciliation:{JobId}] ALERTA: Descuadre significativo de {Amount}",
-                        jobId, result.DiscrepancyAmount);
-                    
-                    // Crear tarea de revisión, enviar notificación, etc.
-                }
+                _logger.LogWarning(
+                    "[Reconciliation:{JobId}] ALERTA: Descuadre significativo de {Amount} en cuenta {AccountRef}",
+                    jobId, result.DiscrepancyAmount, accountRef);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[Reconciliation:{JobId}] Error en conciliación",
-                jobId);
+                "[Reconciliation:{JobId}] Error en conciliación cuenta {AccountRef}",
+                jobId, accountRef);
             throw;
         }
     }
@@ -476,9 +499,21 @@ public interface IFileIngestionService
 
 public interface IReconciliationEngine
 {
+    /// <summary>
+    /// Concilia una cuenta y fecha contra el balance reportado (DailyBalance.ClosingBalance).
+    /// </summary>
     Task<ReconciliationResult> ReconcileAsync(
         Guid accountId,
         DateOnly date,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Concilia una cuenta y fecha contra una lista de transacciones externas (extracto).
+    /// </summary>
+    Task<ReconciliationResult> ReconcileWithStatementAsync(
+        Guid accountId,
+        DateOnly date,
+        IReadOnlyList<Domain.Entities.ExternalStatementLine> statementLines,
         CancellationToken cancellationToken);
 }
 
@@ -495,9 +530,13 @@ public record PendingFile(string FileName, string FullPath, long Size, FileType 
 public enum FileType { Csv, Excel }
 public record ExchangeRateData(string FromCurrency, string ToCurrency, decimal Rate);
 public record ReconciliationResult(
-    int MatchedCount, 
-    int UnmatchedCount, 
+    Guid ReconciliationId,
+    int MatchedCount,
+    int UnmatchedInternal,
+    int UnmatchedExternal,
     decimal DiscrepancyAmount,
-    bool HasDiscrepancies);
+    bool HasDiscrepancies,
+    Domain.Enums.ReconciliationStatus Status,
+    int DiscrepancyCount);
 
 #endregion
