@@ -1,18 +1,17 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
-using FinanceCore.Domain.Entities;
 using FinanceCore.Domain.Events;
 
 namespace FinanceCore.Infrastructure.Services;
 
 /// <summary>
-/// Dispatches domain events collected by aggregate roots via MediatR.
-/// Called by SaveChangesAsync in the DbContext to ensure events are published
-/// within the same unit of work.
+/// Publishes domain events captured during a unit of work AFTER the commit succeeds.
+/// Events do NOT participate in the original DB transaction — they fire only when
+/// the persistence has been confirmed, so a failed save never produces phantom events.
 /// </summary>
 public interface IDomainEventDispatcher
 {
-    Task DispatchEventsAsync(IEnumerable<BaseEntity> entities, CancellationToken cancellationToken = default);
+    Task DispatchAsync(IReadOnlyCollection<IDomainEvent> events, CancellationToken cancellationToken = default);
 }
 
 public class DomainEventDispatcher : IDomainEventDispatcher
@@ -26,23 +25,11 @@ public class DomainEventDispatcher : IDomainEventDispatcher
         _logger = logger;
     }
 
-    public async Task DispatchEventsAsync(IEnumerable<BaseEntity> entities, CancellationToken cancellationToken)
+    public async Task DispatchAsync(IReadOnlyCollection<IDomainEvent> events, CancellationToken cancellationToken)
     {
-        var entitiesWithEvents = entities
-            .Where(e => e.DomainEvents.Any())
-            .ToList();
+        if (events.Count == 0) return;
 
-        var domainEvents = entitiesWithEvents
-            .SelectMany(e => e.DomainEvents)
-            .ToList();
-
-        // Clear events before dispatching to avoid re-publishing on retry
-        foreach (var entity in entitiesWithEvents)
-        {
-            entity.ClearDomainEvents();
-        }
-
-        foreach (var domainEvent in domainEvents)
+        foreach (var domainEvent in events)
         {
             _logger.LogDebug(
                 "Dispatching domain event {EventType} (EventId: {EventId})",
@@ -59,15 +46,11 @@ public class DomainEventDispatcher : IDomainEventDispatcher
                     "Error dispatching domain event {EventType} (EventId: {EventId})",
                     domainEvent.GetType().Name,
                     domainEvent.EventId);
-                // Don't rethrow — domain event handlers should not break the main transaction
+                // El commit ya pasó; no podemos abortar la transacción.
+                // Los handlers fallidos quedan registrados para reproceso manual.
             }
         }
 
-        if (domainEvents.Count > 0)
-        {
-            _logger.LogInformation(
-                "Dispatched {Count} domain events",
-                domainEvents.Count);
-        }
+        _logger.LogInformation("Dispatched {Count} domain events post-commit", events.Count);
     }
 }
