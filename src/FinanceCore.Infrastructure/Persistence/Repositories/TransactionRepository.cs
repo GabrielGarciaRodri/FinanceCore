@@ -208,7 +208,8 @@ public class TransactionRepository : ITransactionRepository
         TransactionSearchCriteria criteria,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.Transactions.AsQueryable();
+        // Lectura paginada: AsNoTracking evita overhead del ChangeTracker.
+        var query = _context.Transactions.AsNoTracking().AsQueryable();
 
         if (criteria.AccountId.HasValue)
             query = query.Where(t => t.AccountId == criteria.AccountId.Value);
@@ -229,24 +230,60 @@ public class TransactionRepository : ITransactionRepository
             query = query.Where(t => t.Category == criteria.Category);
 
         if (!string.IsNullOrWhiteSpace(criteria.SearchText))
-            query = query.Where(t => t.Description != null && 
+            query = query.Where(t => t.Description != null &&
                                      t.Description.Contains(criteria.SearchText));
+
+        if (criteria.MinAmount.HasValue)
+            query = query.Where(t => EF.Property<decimal>(t, "_amountValue") >= criteria.MinAmount.Value);
+
+        if (criteria.MaxAmount.HasValue)
+            query = query.Where(t => EF.Property<decimal>(t, "_amountValue") <= criteria.MaxAmount.Value);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
+        query = ApplyOrdering(query, criteria);
+
+        var page = Math.Max(1, criteria.Page);
+        var pageSize = Math.Clamp(criteria.PageSize, 1, 200);
+
         var items = await query
-            .OrderByDescending(t => t.ValueDate)
-            .ThenByDescending(t => t.CreatedAt)
-            .Skip((criteria.Page - 1) * criteria.PageSize)
-            .Take(criteria.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
 
         return new PagedResult<Transaction>
         {
             Items = items,
             TotalCount = totalCount,
-            Page = criteria.Page,
-            PageSize = criteria.PageSize
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    private static IQueryable<Transaction> ApplyOrdering(
+        IQueryable<Transaction> query,
+        TransactionSearchCriteria criteria)
+    {
+        // SortBy mapea a columnas conocidas. Cualquier valor desconocido cae al default.
+        return (criteria.SortBy?.Trim().ToLowerInvariant()) switch
+        {
+            "amount" => criteria.SortDescending
+                ? query.OrderByDescending(t => EF.Property<decimal>(t, "_amountValue"))
+                       .ThenByDescending(t => t.CreatedAt)
+                : query.OrderBy(t => EF.Property<decimal>(t, "_amountValue"))
+                       .ThenBy(t => t.CreatedAt),
+
+            "bookingdate" or "booking_date" => criteria.SortDescending
+                ? query.OrderByDescending(t => t.BookingDate).ThenByDescending(t => t.CreatedAt)
+                : query.OrderBy(t => t.BookingDate).ThenBy(t => t.CreatedAt),
+
+            "createdat" or "created_at" => criteria.SortDescending
+                ? query.OrderByDescending(t => t.CreatedAt)
+                : query.OrderBy(t => t.CreatedAt),
+
+            _ => criteria.SortDescending
+                ? query.OrderByDescending(t => t.ValueDate).ThenByDescending(t => t.CreatedAt)
+                : query.OrderBy(t => t.ValueDate).ThenBy(t => t.CreatedAt)
         };
     }
 

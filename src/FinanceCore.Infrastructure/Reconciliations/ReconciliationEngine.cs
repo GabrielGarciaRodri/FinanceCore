@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
+using FinanceCore.Infrastructure.Observability;
 
 namespace FinanceCore.Infrastructure.Reconciliations;
 
@@ -10,15 +12,18 @@ public class ReconciliationEngine : IReconciliationEngine
     private readonly ILogger<ReconciliationEngine> _logger;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ReconciliationOptions _options;
+    private readonly ReconciliationMetrics _metrics;
 
     public ReconciliationEngine(
         ILogger<ReconciliationEngine> logger,
         IUnitOfWork unitOfWork,
-        IOptions<ReconciliationOptions> options)
+        IOptions<ReconciliationOptions> options,
+        ReconciliationMetrics metrics)
     {
         _logger = logger;
         _unitOfWork = unitOfWork;
         _options = options.Value;
+        _metrics = metrics;
     }
 
     public Task<ReconciliationResult> ReconcileAsync(Guid accountId, DateOnly date, CancellationToken ct = default)
@@ -47,6 +52,18 @@ public class ReconciliationEngine : IReconciliationEngine
         _logger.LogInformation(
             "Reconciling account ref {AccountRef} for {Date} using {Source}",
             accountRef, date, source);
+
+        var sourceTag = new KeyValuePair<string, object?>("source", source.ToString());
+        _metrics.RunsTotal.Add(1, sourceTag);
+
+        using var activity = FinanceCoreTelemetry.ActivitySource.StartActivity(
+            "Reconciliation.Execute",
+            ActivityKind.Internal);
+        activity?.SetTag("financecore.account_ref", accountRef);
+        activity?.SetTag("financecore.date", date.ToString("yyyy-MM-dd"));
+        activity?.SetTag("financecore.source", source.ToString());
+
+        var stopwatch = Stopwatch.StartNew();
 
         var existing = await _unitOfWork.Reconciliations.GetByAccountAndDateAsync(accountId, date, ct);
         if (existing != null && existing.Status == Domain.Enums.ReconciliationStatus.Completed)
@@ -88,6 +105,26 @@ public class ReconciliationEngine : IReconciliationEngine
             await MarkDailyBalanceReconciledAsync(reconciliation, accountId, date, ct);
             await _unitOfWork.SaveChangesAsync(ct);
 
+            stopwatch.Stop();
+            _metrics.DurationMs.Record(stopwatch.Elapsed.TotalMilliseconds, sourceTag);
+            _metrics.DiscrepancyAmount.Record(Math.Abs((double)reconciliation.DiscrepancyAmount), sourceTag);
+
+            if (reconciliation.Status == Domain.Enums.ReconciliationStatus.Completed)
+                _metrics.RunsCompletedClean.Add(1, sourceTag);
+            else if (reconciliation.Status == Domain.Enums.ReconciliationStatus.CompletedWithDiscrepancies)
+                _metrics.RunsCompletedWithDiscrepancies.Add(1, sourceTag);
+
+            foreach (var group in reconciliation.Discrepancies.GroupBy(d => d.DiscrepancyType))
+            {
+                _metrics.DiscrepanciesCreated.Add(
+                    group.Count(),
+                    new KeyValuePair<string, object?>("type", group.Key.ToString()));
+            }
+
+            activity?.SetTag("financecore.status", reconciliation.Status.ToString());
+            activity?.SetTag("financecore.matched", reconciliation.MatchedCount);
+            activity?.SetTag("financecore.discrepancies", reconciliation.Discrepancies.Count);
+
             _logger.LogInformation(
                 "Reconciliation persisted. Id={Id}, Status={Status}, Matched={Matched}, " +
                 "UnmatchedInternal={UI}, UnmatchedExternal={UE}, Discrepancy={Discrepancy}, Count={Count}",
@@ -103,6 +140,11 @@ public class ReconciliationEngine : IReconciliationEngine
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            _metrics.RunsFailed.Add(1, sourceTag);
+            _metrics.DurationMs.Record(stopwatch.Elapsed.TotalMilliseconds, sourceTag);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+
             _logger.LogError(ex, "Reconciliation failed for account ref {AccountRef} on {Date}", accountRef, date);
             reconciliation.Fail(ex.Message);
             try { await _unitOfWork.SaveChangesAsync(ct); } catch { /* swallow persistence error on failure path */ }

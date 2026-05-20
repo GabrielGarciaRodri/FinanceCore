@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Hangfire;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.Exceptions;
 using FinanceCore.Application.Transactions.Commands.IngestTransactions;
 using FinanceCore.Infrastructure.ExchangeRates;
+using FinanceCore.Infrastructure.Observability;
 
 namespace FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 
@@ -19,14 +21,17 @@ public class TransactionIngestionJob
     private readonly IMediator _mediator;
     private readonly IFileIngestionService _fileService;
     private readonly ILogger<TransactionIngestionJob> _logger;
+    private readonly IngestionMetrics _metrics;
 
     public TransactionIngestionJob(
         IMediator mediator,
         IFileIngestionService fileService,
+        IngestionMetrics metrics,
         ILogger<TransactionIngestionJob> logger)
     {
         _mediator = mediator;
         _fileService = fileService;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -65,6 +70,7 @@ public class TransactionIngestionJob
 
             foreach (var file in pendingFiles)
             {
+                var fileStopwatch = Stopwatch.StartNew();
                 try
                 {
                     var metrics = await ProcessFileAsync(file, jobId, cancellationToken);
@@ -73,15 +79,28 @@ public class TransactionIngestionJob
                     totalSucceeded += metrics.Succeeded;
                     totalFailedRows += metrics.Failed;
                     totalDuplicates += metrics.Duplicates;
+
+                    _metrics.FilesProcessed.Add(1, new KeyValuePair<string, object?>("file_type", file.FileType.ToString()));
+                    _metrics.RowsIngested.Add(metrics.Succeeded);
+                    _metrics.RowsRejected.Add(metrics.Failed);
+                    _metrics.DuplicatesDetected.Add(metrics.Duplicates);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, 
-                        "[Job:{JobId}] Error procesando archivo {FileName}", 
+                    _logger.LogError(ex,
+                        "[Job:{JobId}] Error procesando archivo {FileName}",
                         jobId, file.FileName);
-                    
+
                     await _fileService.MoveToErrorAsync(file, ex.Message, cancellationToken);
                     filesFailed++;
+                    _metrics.FilesFailed.Add(1, new KeyValuePair<string, object?>("file_type", file.FileType.ToString()));
+                }
+                finally
+                {
+                    fileStopwatch.Stop();
+                    _metrics.FileProcessingDurationMs.Record(
+                        fileStopwatch.Elapsed.TotalMilliseconds,
+                        new KeyValuePair<string, object?>("file_type", file.FileType.ToString()));
                 }
             }
             var duration = DateTimeOffset.UtcNow - startedAt;
@@ -413,17 +432,20 @@ public class ExchangeRateUpdateJob
     private readonly IExchangeRateProvider _provider;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ExchangeRateOptions _options;
+    private readonly ExchangeRateMetrics _metrics;
     private readonly ILogger<ExchangeRateUpdateJob> _logger;
 
     public ExchangeRateUpdateJob(
         IExchangeRateProvider provider,
         IUnitOfWork unitOfWork,
         IOptions<ExchangeRateOptions> options,
+        ExchangeRateMetrics metrics,
         ILogger<ExchangeRateUpdateJob> logger)
     {
         _provider = provider;
         _unitOfWork = unitOfWork;
         _options = options.Value;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -443,12 +465,23 @@ public class ExchangeRateUpdateJob
 
         IEnumerable<ExchangeRateData> rates;
 
+        var providerStopwatch = Stopwatch.StartNew();
         try
         {
             rates = await _provider.GetLatestRatesAsync(baseCurrency, currencies, cancellationToken);
+            providerStopwatch.Stop();
+            _metrics.ProviderCalls.Add(1, new KeyValuePair<string, object?>("provider", _provider.ProviderName));
+            _metrics.ProviderLatencyMs.Record(
+                providerStopwatch.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", _provider.ProviderName));
         }
         catch (ExchangeRateProviderException ex)
         {
+            providerStopwatch.Stop();
+            _metrics.ProviderFailures.Add(1, new KeyValuePair<string, object?>("provider", _provider.ProviderName));
+            _metrics.ProviderLatencyMs.Record(
+                providerStopwatch.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", _provider.ProviderName));
             _logger.LogWarning(
                 "[ExchangeRate:{JobId}] Proveedor no disponible — usando rates existentes en DB. Motivo: {Message}",
                 jobId, ex.Message);
@@ -474,9 +507,14 @@ public class ExchangeRateUpdateJob
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            var ratesCount = rates.Count();
+            _metrics.RatesUpserted.Add(
+                ratesCount,
+                new KeyValuePair<string, object?>("provider", _provider.ProviderName));
+
             _logger.LogInformation(
                 "[ExchangeRate:{JobId}] Actualizados {Count} tipos de cambio desde {Provider}",
-                jobId, rates.Count(), _provider.ProviderName);
+                jobId, ratesCount, _provider.ProviderName);
         }
         catch (Exception ex)
         {

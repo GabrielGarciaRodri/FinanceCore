@@ -204,7 +204,11 @@ public class SearchTransactionsQueryHandler
 public record GetAccountSummaryQuery(
     Guid AccountId,
     DateOnly StartDate,
-    DateOnly EndDate) : IRequest<Result<TransactionSummaryDto>>;
+    DateOnly EndDate) : IRequest<Result<TransactionSummaryDto>>, ICacheableQuery
+{
+    public string CacheKey => $"acct-summary:{AccountId:N}:{StartDate:yyyyMMdd}:{EndDate:yyyyMMdd}";
+    public TimeSpan CacheDuration => TimeSpan.FromSeconds(60);
+}
 
 public record TransactionSummaryDto
 {

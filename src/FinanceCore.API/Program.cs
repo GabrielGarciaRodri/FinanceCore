@@ -15,6 +15,7 @@ using FinanceCore.Domain.Exceptions;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
 using FinanceCore.Infrastructure.FileIngestion;
+using FinanceCore.Infrastructure.Observability;
 using FinanceCore.Infrastructure.Persistence;
 using FinanceCore.Infrastructure.Persistence.Context;
 using FinanceCore.Infrastructure.Persistence.Repositories;
@@ -22,6 +23,9 @@ using FinanceCore.Infrastructure.Reconciliations;
 using FinanceCore.Infrastructure.Services;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 using FinanceCore.Infrastructure.ExchangeRates;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE SERILOG (antes de construir el host)
@@ -175,6 +179,60 @@ try
     {
         services.AddDistributedMemoryCache();
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // OpenTelemetry - métricas + tracing
+    // ─────────────────────────────────────────────────────────────────────────────
+    services.AddSingleton<IngestionMetrics>();
+    services.AddSingleton<ReconciliationMetrics>();
+    services.AddSingleton<ExchangeRateMetrics>();
+
+    var serviceVersion = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+    var resourceBuilder = ResourceBuilder.CreateDefault()
+        .AddService(serviceName: "FinanceCore.API", serviceVersion: serviceVersion)
+        .AddAttributes(new KeyValuePair<string, object>[]
+        {
+            new("deployment.environment", builder.Environment.EnvironmentName)
+        });
+
+    var otlpEndpoint = configuration["OpenTelemetry:OtlpEndpoint"];
+
+    services.AddOpenTelemetry()
+        .ConfigureResource(rb => rb.AddService(serviceName: "FinanceCore.API", serviceVersion: serviceVersion))
+        .WithMetrics(metrics =>
+        {
+            metrics
+                .SetResourceBuilder(resourceBuilder)
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation()
+                .AddMeter(FinanceCoreTelemetry.MeterName)
+                .AddPrometheusExporter();
+
+            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+            {
+                metrics.AddOtlpExporter(opt => opt.Endpoint = new Uri(otlpEndpoint));
+            }
+        })
+        .WithTracing(tracing =>
+        {
+            tracing
+                .SetResourceBuilder(resourceBuilder)
+                .AddAspNetCoreInstrumentation(opts =>
+                {
+                    opts.Filter = ctx =>
+                        !ctx.Request.Path.StartsWithSegments("/health") &&
+                        !ctx.Request.Path.StartsWithSegments("/metrics");
+                })
+                .AddHttpClientInstrumentation()
+                .AddSource(FinanceCoreTelemetry.ActivitySourceName);
+
+            if (builder.Environment.IsDevelopment())
+                tracing.AddConsoleExporter();
+
+            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+                tracing.AddOtlpExporter(opt => opt.Endpoint = new Uri(otlpEndpoint));
+        });
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Health Checks
@@ -436,6 +494,9 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     app.MapControllers();
 
+    // Prometheus scraping endpoint (anonymous; idealmente exponer sólo a la red interna)
+    app.MapPrometheusScrapingEndpoint("/metrics").AllowAnonymous();
+
     // Health checks (anonymous access)
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
@@ -473,11 +534,12 @@ try
     // INICIALIZACIÓN Y EJECUCIÓN
     // ═══════════════════════════════════════════════════════════════════════════
 
-    Log.Information("Aplicación iniciada. Escuchando en: {Urls}", 
+    Log.Information("Aplicación iniciada. Escuchando en: {Urls}",
         string.Join(", ", app.Urls));
     Log.Information("Swagger disponible en: /swagger");
     Log.Information("Hangfire Dashboard disponible en: /hangfire");
     Log.Information("Health checks disponibles en: /health");
+    Log.Information("Prometheus metrics disponibles en: /metrics");
 
     await app.RunAsync();
 }
