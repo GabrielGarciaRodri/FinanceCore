@@ -13,7 +13,9 @@ using FinanceCore.API.Logging;
 using FinanceCore.Application.Common.Behaviors;
 using FinanceCore.Domain.Exceptions;
 using FinanceCore.Domain.Repositories;
+using FinanceCore.Infrastructure.Alerting;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
+using FinanceCore.Infrastructure.Exports;
 using FinanceCore.Infrastructure.FileIngestion;
 using FinanceCore.Infrastructure.Observability;
 using FinanceCore.Infrastructure.Persistence;
@@ -135,6 +137,21 @@ try
     services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // Exports
+    // ─────────────────────────────────────────────────────────────────────────────
+    services.AddScoped<ITransactionExportService, TransactionExportService>();
+    services.AddScoped<IReconciliationExportService, ReconciliationExportService>();
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Alerting (logging sink siempre activo; webhook opcional via config)
+    // ─────────────────────────────────────────────────────────────────────────────
+    services.Configure<AlertingOptions>(configuration.GetSection(AlertingOptions.SectionName));
+    services.AddScoped<IAlertSink, LoggingAlertSink>();
+    services.AddHttpClient<WebhookAlertSink>();
+    services.AddScoped<IAlertSink>(sp => sp.GetRequiredService<WebhookAlertSink>());
+    services.AddScoped<IAlertDispatcher, AlertDispatcher>();
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // MediatR + Pipeline Behaviors
     // ─────────────────────────────────────────────────────────────────────────────
     services.AddMediatR(cfg =>
@@ -142,7 +159,9 @@ try
         cfg.RegisterServicesFromAssembly(typeof(Program).Assembly);
         cfg.RegisterServicesFromAssembly(
             Assembly.Load("FinanceCore.Application"));
-        
+        cfg.RegisterServicesFromAssembly(
+            Assembly.Load("FinanceCore.Infrastructure"));
+
         // Pipeline behaviors (orden importa!)
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));

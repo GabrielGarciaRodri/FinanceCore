@@ -200,6 +200,14 @@ public class Reconciliation : BaseEntity, IAggregateRoot
             ? ReconciliationStatus.Completed
             : ReconciliationStatus.CompletedWithDiscrepancies;
         UpdatedAt = DateTimeOffset.UtcNow;
+
+        AddDomainEvent(new Events.ReconciliationCompletedEvent(
+            Id,
+            AccountId,
+            ReconciliationDate,
+            MatchedCount,
+            unmatchedInternal + unmatchedExternal,
+            DiscrepancyAmount));
     }
 
     public void Fail(string reason)

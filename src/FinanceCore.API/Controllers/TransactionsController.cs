@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using FinanceCore.Application.Transactions.Commands.IngestTransactions;
 using FinanceCore.Application.Transactions.Queries;
+using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.Repositories;
+using FinanceCore.Infrastructure.Exports;
 
 namespace FinanceCore.API.Controllers;
 
@@ -218,6 +220,58 @@ public class TransactionsController : ControllerBase
 
         return Ok(result.Value);
     }
+
+    /// <summary>
+    /// Exporta transacciones a CSV (streaming).
+    /// </summary>
+    [HttpGet("export.csv")]
+    [Produces("text/csv")]
+    public async Task<IActionResult> ExportCsv(
+        [FromQuery] SearchTransactionsRequest request,
+        [FromServices] ITransactionExportService exportService,
+        CancellationToken cancellationToken)
+    {
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.ContentDisposition = $"attachment; filename=transactions-{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
+
+        var criteria = ToCriteria(request);
+        await exportService.WriteCsvAsync(criteria, Response.Body, cancellationToken);
+        return new EmptyResult();
+    }
+
+    /// <summary>
+    /// Exporta transacciones a XLSX (formato Excel).
+    /// </summary>
+    [HttpGet("export.xlsx")]
+    [Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    public async Task<IActionResult> ExportXlsx(
+        [FromQuery] SearchTransactionsRequest request,
+        [FromServices] ITransactionExportService exportService,
+        CancellationToken cancellationToken)
+    {
+        var bytes = await exportService.WriteXlsxAsync(ToCriteria(request), cancellationToken);
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"transactions-{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx");
+    }
+
+    private static TransactionSearchCriteria ToCriteria(SearchTransactionsRequest r) => new()
+    {
+        AccountId = r.AccountId,
+        StartDate = r.StartDate,
+        EndDate = r.EndDate,
+        Type = Enum.TryParse<TransactionType>(r.Type, ignoreCase: true, out var t) ? t : null,
+        Status = Enum.TryParse<TransactionStatus>(r.Status, ignoreCase: true, out var s) ? s : null,
+        MinAmount = r.MinAmount,
+        MaxAmount = r.MaxAmount,
+        Category = r.Category,
+        SearchText = r.SearchText,
+        Page = 1,
+        PageSize = 100_000,                 // límite alto: la exportación itera todo
+        SortBy = r.SortBy,
+        SortDescending = r.SortDescending
+    };
 }
 
 #region Request/Response DTOs
