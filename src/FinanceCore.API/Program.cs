@@ -17,6 +17,7 @@ using FinanceCore.Infrastructure.Alerting;
 using FinanceCore.Infrastructure.BackgroundJobs.Configuration;
 using FinanceCore.Infrastructure.Exports;
 using FinanceCore.Infrastructure.FileIngestion;
+using FinanceCore.Infrastructure.Identity;
 using FinanceCore.Infrastructure.Observability;
 using FinanceCore.Infrastructure.Persistence;
 using FinanceCore.Infrastructure.Persistence.Context;
@@ -25,9 +26,13 @@ using FinanceCore.Infrastructure.Reconciliations;
 using FinanceCore.Infrastructure.Services;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 using FinanceCore.Infrastructure.ExchangeRates;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using System.Text;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE SERILOG (antes de construir el host)
@@ -321,8 +326,30 @@ try
             Scheme = ApiKeyDefaults.AuthenticationScheme
         });
 
+        // JWT Bearer
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Description = "JWT Bearer token. Obtainable via POST /api/auth/login. Format: 'Bearer {token}'",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        });
+
         options.AddSecurityRequirement(new OpenApiSecurityRequirement
         {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            },
             {
                 new OpenApiSecurityScheme
                 {
@@ -348,10 +375,77 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     // Authentication & Authorization
     // ─────────────────────────────────────────────────────────────────────────────
-    services.AddAuthentication(ApiKeyDefaults.AuthenticationScheme)
+    // Identity (ASP.NET Core Identity sobre el mismo DbContext).
+    services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+        {
+            options.Password.RequiredLength = 8;
+            options.Password.RequireDigit = true;
+            options.Password.RequireUppercase = true;
+            options.Password.RequireLowercase = true;
+            options.Password.RequireNonAlphanumeric = false;
+
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+            options.Lockout.MaxFailedAccessAttempts = 5;
+
+            options.User.RequireUniqueEmail = true;
+        })
+        .AddEntityFrameworkStores<FinanceCoreDbContext>()
+        .AddDefaultTokenProviders();
+
+    services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+    services.Configure<IdentitySeedOptions>(configuration.GetSection(IdentitySeedOptions.SectionName));
+    services.AddScoped<IJwtTokenService, JwtTokenService>();
+    services.AddScoped<IIdentitySeeder, IdentitySeeder>();
+
+    var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+
+    // Auth multi-scheme: el ForwardDefaultSelector elige por la presencia del header
+    // Authorization: Bearer ... vs X-Api-Key. [Authorize] sin AuthenticationSchemes
+    // funciona con ambos automáticamente.
+    services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = "MultiScheme";
+            options.DefaultChallengeScheme = "MultiScheme";
+        })
+        .AddPolicyScheme("MultiScheme", "JWT or ApiKey", options =>
+        {
+            options.ForwardDefaultSelector = ctx =>
+            {
+                var authHeader = ctx.Request.Headers.Authorization.ToString();
+                if (!string.IsNullOrWhiteSpace(authHeader) &&
+                    authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return JwtBearerDefaults.AuthenticationScheme;
+                }
+
+                return ApiKeyDefaults.AuthenticationScheme;
+            };
+        })
+        .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey) || jwtOptions.SigningKey.Length < 32)
+            {
+                Log.Warning("JWT SigningKey ausente o demasiado corta. /api/auth/* fallará hasta configurarla.");
+            }
+
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = jwtOptions.Issuer,
+                ValidAudience = jwtOptions.Audience,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(
+                        string.IsNullOrWhiteSpace(jwtOptions.SigningKey)
+                            ? new string('0', 64)        // placeholder: ningún token va a validar
+                            : jwtOptions.SigningKey)),
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
+        })
         .AddApiKey(options =>
         {
-            // Load API keys from configuration
             var apiKeysSection = configuration.GetSection("Authentication:ApiKeys");
             if (apiKeysSection.Exists())
             {
@@ -367,7 +461,6 @@ try
                     };
                 }
             }
-
         });
 
     services.AddAuthorization(options =>
@@ -386,9 +479,16 @@ try
 
         options.AddPolicy("Development", policy =>
         {
-            policy.AllowAnyOrigin()
+            // Frontend de desarrollo + cualquier dev custom configurado.
+            var devOrigins = new[] { "http://localhost:3000", "http://localhost:5173" }
+                .Concat(allowedOrigins)
+                .Distinct()
+                .ToArray();
+
+            policy.WithOrigins(devOrigins)
                   .AllowAnyMethod()
-                  .AllowAnyHeader();
+                  .AllowAnyHeader()
+                  .AllowCredentials();
         });
 
         options.AddPolicy("Production", policy =>
@@ -402,7 +502,8 @@ try
 
             policy.WithOrigins(allowedOrigins)
                   .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                  .WithHeaders("Content-Type", "Accept", ApiKeyDefaults.HeaderName);
+                  .WithHeaders("Content-Type", "Accept", "Authorization", ApiKeyDefaults.HeaderName)
+                  .AllowCredentials();
         });
     });
 
@@ -548,6 +649,20 @@ try
 
     // Configurar jobs recurrentes
     HangfireJobsConfiguration.ConfigureRecurringJobs();
+
+    // Identity: seed inicial (idempotente).
+    using (var scope = app.Services.CreateScope())
+    {
+        try
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<IIdentitySeeder>();
+            await seeder.SeedAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Identity seed falló. La aplicación continúa pero podría no haber usuarios.");
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // INICIALIZACIÓN Y EJECUCIÓN

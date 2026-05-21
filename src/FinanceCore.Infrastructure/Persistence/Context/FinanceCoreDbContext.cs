@@ -1,14 +1,17 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using static FinanceCore.Domain.Entities.Transaction;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using FinanceCore.Domain.Entities;
 using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.ValueObjects;
+using FinanceCore.Infrastructure.Identity;
 using FinanceCore.Infrastructure.Services;
 
 namespace FinanceCore.Infrastructure.Persistence.Context;
 
-public class FinanceCoreDbContext : DbContext
+public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
 {
     private readonly IDomainEventDispatcher? _domainEventDispatcher;
 
@@ -28,6 +31,7 @@ public class FinanceCoreDbContext : DbContext
     public DbSet<Institution> Institutions => Set<Institution>();
     public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
     public DbSet<ReconciliationDiscrepancy> ReconciliationDiscrepancies => Set<ReconciliationDiscrepancy>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -80,6 +84,8 @@ public class FinanceCoreDbContext : DbContext
         modelBuilder.ApplyConfiguration(new InstitutionConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationDiscrepancyConfiguration());
+        modelBuilder.ApplyConfiguration(new ApplicationUserConfiguration());
+        modelBuilder.ApplyConfiguration(new RefreshTokenConfiguration());
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
@@ -311,5 +317,42 @@ public class InstitutionConfiguration : IEntityTypeConfiguration<Institution>
         
         // Ignorar Metadata (Dictionary no soportado directamente)
         builder.Ignore(i => i.Metadata);
+    }
+}
+
+public class ApplicationUserConfiguration : IEntityTypeConfiguration<ApplicationUser>
+{
+    public void Configure(EntityTypeBuilder<ApplicationUser> builder)
+    {
+        // Tabla canónica de Identity, renombrada por ToSnakeCase.
+        builder.Property(u => u.DisplayName).HasMaxLength(100);
+        builder.Property(u => u.IsActive).IsRequired();
+        builder.Property(u => u.CreatedAt).IsRequired();
+    }
+}
+
+public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
+{
+    public void Configure(EntityTypeBuilder<RefreshToken> builder)
+    {
+        builder.ToTable("refresh_tokens");
+        builder.HasKey(t => t.Id);
+
+        builder.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("ix_refresh_tokens_hash");
+        builder.HasIndex(t => t.UserId).HasDatabaseName("ix_refresh_tokens_user_id");
+
+        builder.Property(t => t.UserId).IsRequired();
+        builder.Property(t => t.TokenHash).HasMaxLength(128).IsRequired();
+        builder.Property(t => t.ExpiresAt).IsRequired();
+        builder.Property(t => t.CreatedAt).IsRequired();
+        builder.Property(t => t.UserAgent).HasMaxLength(500);
+        builder.Property(t => t.IpAddress).HasColumnType("inet");
+
+        builder.HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Ignore(t => t.IsActive);
     }
 }
