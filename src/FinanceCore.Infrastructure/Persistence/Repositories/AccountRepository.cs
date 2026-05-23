@@ -56,12 +56,20 @@ public class AccountRepository : IAccountRepository
 
     public async Task<IReadOnlyDictionary<string, decimal>> GetTotalBalancesByCurrencyAsync(CancellationToken ct = default)
     {
+        // Currency y CurrentBalance son Value Objects ignorados en el mapping;
+        // EF sólo conoce los backing fields _currencyCode y _currentBalanceValue.
+        // Usamos EF.Property<>() para que el provider pueda traducir el GroupBy/Sum
+        // a SQL puro (de otro modo lanza "could not be translated").
         var balances = await _context.Accounts
             .Where(a => a.IsActive)
-            .GroupBy(a => a.Currency.Code)
-            .Select(g => new { Currency = g.Key, Total = g.Sum(a => a.CurrentBalance.Amount) })
+            .GroupBy(a => EF.Property<string>(a, "_currencyCode"))
+            .Select(g => new
+            {
+                Currency = g.Key,
+                Total = g.Sum(a => EF.Property<decimal>(a, "_currentBalanceValue"))
+            })
             .ToListAsync(ct);
 
-        return balances.ToDictionary(b => b.Currency, b => b.Total);
+        return balances.ToDictionary(b => b.Currency!, b => b.Total);
     }
 }

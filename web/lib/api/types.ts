@@ -157,6 +157,45 @@ export interface ReconciliationDiscrepancyDto {
   resolvedAt: string | null;
 }
 
+// ----- Dashboard -----
+
+export interface DashboardDto {
+  balancesByCurrency: BalanceByCurrencyDto[];
+  activity: ActivityPointDto[];
+  recentReconciliations: RecentReconciliationDto[];
+  stats: DashboardQuickStatsDto;
+}
+
+export interface BalanceByCurrencyDto {
+  currencyCode: string;
+  totalBalance: number;
+  accountCount: number;
+}
+
+export interface ActivityPointDto {
+  date: string;       // "YYYY-MM-DD"
+  count: number;
+  debits: number;     // valor absoluto (positivo)
+  credits: number;
+}
+
+export interface RecentReconciliationDto {
+  id: string;
+  accountId: string;
+  date: string;
+  status: ReconciliationStatus;
+  discrepancyCount: number;
+  discrepancyAmount: number;
+  approved: boolean;
+}
+
+export interface DashboardQuickStatsDto {
+  activeAccounts: number;
+  transactionsToday: number;
+  pendingDiscrepancies: number;
+  reconciliationsLast7Days: number;
+}
+
 // ----- Common -----
 
 export interface ProblemDetails {

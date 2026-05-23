@@ -402,10 +402,18 @@ try
     // Auth multi-scheme: el ForwardDefaultSelector elige por la presencia del header
     // Authorization: Bearer ... vs X-Api-Key. [Authorize] sin AuthenticationSchemes
     // funciona con ambos automáticamente.
+    // OJO: AddIdentity (más arriba) sobrescribe DefaultAuthenticateScheme y
+    // DefaultChallengeScheme apuntándolos a Identity.Application (cookies).
+    // Tenemos que reescribir TODOS los defaults de auth/challenge/forbid acá
+    // para que el flujo [Authorize] use MultiScheme (JWT o ApiKey) y no la
+    // cookie scheme de Identity, que para esta app es ruido — Identity la
+    // usamos sólo para hashing/UserManager/RoleManager, no para login cookie.
     services.AddAuthentication(options =>
         {
             options.DefaultScheme = "MultiScheme";
+            options.DefaultAuthenticateScheme = "MultiScheme";
             options.DefaultChallengeScheme = "MultiScheme";
+            options.DefaultForbidScheme = "MultiScheme";
         })
         .AddPolicyScheme("MultiScheme", "JWT or ApiKey", options =>
         {
