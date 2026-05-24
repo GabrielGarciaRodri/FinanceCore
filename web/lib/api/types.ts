@@ -110,6 +110,43 @@ export interface TransactionSummaryDto {
   largestCredit: number;
 }
 
+export interface SearchTransactionsRequest {
+  accountId?: string;
+  startDate?: string;       // YYYY-MM-DD
+  endDate?: string;
+  type?: TransactionType;
+  status?: TransactionStatus;
+  minAmount?: number;
+  maxAmount?: number;
+  category?: string;
+  searchText?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDescending?: boolean;
+}
+
+// ----- Accounts -----
+
+export type AccountType =
+  | "Checking"
+  | "Savings"
+  | "Credit"
+  | "Loan"
+  | "Treasury"
+  | "Investment";
+
+export interface AccountListItemDto {
+  id: string;
+  accountNumber: string;
+  accountName: string;
+  type: AccountType | string;
+  currencyCode: string;
+  currentBalance: number;
+  isActive: boolean;
+  institutionId: string;
+}
+
 // ----- Reconciliations -----
 
 export type ReconciliationStatus =
