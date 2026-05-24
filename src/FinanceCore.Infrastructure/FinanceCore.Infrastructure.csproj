@@ -19,6 +19,17 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.10" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.0.2" />
+
+    <!--
+      Overrides explícitos de transitive deps con CVEs:
+        - Newtonsoft.Json 11.0.1 (transitive de Hangfire.Core) → CVE GHSA-5crp-9r3c-p9vr
+        - System.IO.Packaging 6.0.0 (transitive de ClosedXML) → CVE GHSA-f32c-w444-8ppv + GHSA-qj66-m88j-hmgj
+      Forzamos versiones seguras agregando PackageReferences directas; los
+      consumidores transitive siguen funcionando porque las versiones nuevas
+      son compatibles con los rangos pedidos.
+    -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.IO.Packaging" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FinanceCore.Domain\FinanceCore.Domain.csproj" />
