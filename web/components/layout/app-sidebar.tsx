@@ -56,7 +56,7 @@ export function AppSidebar(): JSX.Element {
         })}
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
-        v0.1 — fase D
+        v0.1 — fase E
       </div>
     </aside>
   );

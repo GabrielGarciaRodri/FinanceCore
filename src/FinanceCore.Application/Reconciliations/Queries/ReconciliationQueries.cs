@@ -117,6 +117,35 @@ public class SearchReconciliationsQueryHandler
 
 #endregion
 
+#region GetReconciliationById
+
+public record GetReconciliationByIdQuery(Guid Id)
+    : IRequest<Result<ReconciliationDto>>;
+
+public class GetReconciliationByIdQueryHandler
+    : IRequestHandler<GetReconciliationByIdQuery, Result<ReconciliationDto>>
+{
+    private readonly IUnitOfWork _unitOfWork;
+
+    public GetReconciliationByIdQueryHandler(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
+
+    public async Task<Result<ReconciliationDto>> Handle(
+        GetReconciliationByIdQuery request,
+        CancellationToken cancellationToken)
+    {
+        var reconciliation = await _unitOfWork.Reconciliations
+            .GetByIdAsync(request.Id, cancellationToken);
+
+        if (reconciliation == null)
+            return Result<ReconciliationDto>.Failure(
+                $"No existe conciliación con id {request.Id}");
+
+        return Result<ReconciliationDto>.Success(ReconciliationMapper.ToDto(reconciliation));
+    }
+}
+
+#endregion
+
 internal static class ReconciliationMapper
 {
     public static ReconciliationDto ToDto(Domain.Entities.Reconciliation r) => new()

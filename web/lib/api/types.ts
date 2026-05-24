@@ -156,6 +156,42 @@ export type ReconciliationStatus =
   | "CompletedWithDiscrepancies"
   | "Failed";
 
+export type ResolutionType =
+  | "Pending"
+  | "MatchedManually"
+  | "AdjustmentCreated"
+  | "Ignored"
+  | "UnderInvestigation"
+  | "Escalated";
+
+export type DiscrepancyType =
+  | "MissingExternal"
+  | "MissingInternal"
+  | "AmountMismatch"
+  | "DateMismatch"
+  | "PossibleDuplicate"
+  | "ReferenceMismatch";
+
+export interface SearchReconciliationsRequest {
+  accountId?: string;
+  startDate?: string;       // YYYY-MM-DD
+  endDate?: string;
+  status?: ReconciliationStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ResolveDiscrepancyRequest {
+  resolution: ResolutionType;
+  resolvedBy: string;
+  notes?: string;
+}
+
+export interface ApproveReconciliationRequest {
+  approvedBy: string;
+  resolutionNotes?: string;
+}
+
 export interface ReconciliationDto {
   id: string;
   accountId: string;

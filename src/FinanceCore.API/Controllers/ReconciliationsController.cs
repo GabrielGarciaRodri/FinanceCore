@@ -56,6 +56,31 @@ public partial class ReconciliationsController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene una conciliación por su ID.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ReconciliationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _mediator.Send(
+            new GetReconciliationByIdQuery(id),
+            cancellationToken);
+
+        if (result.IsFailure)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Conciliación no encontrada",
+                Detail = result.Error,
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
     /// Busca conciliaciones con filtros opcionales.
     /// </summary>
     [HttpGet]
