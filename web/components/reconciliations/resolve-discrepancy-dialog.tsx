@@ -91,7 +91,7 @@ export function ResolveDiscrepancyDialog({
           <DialogDescription>
             {discrepancy
               ? `Tipo: ${discrepancy.discrepancyType}. Diferencia: ${
-                  discrepancy.differenceAmount !== null
+                  discrepancy.differenceAmount != null
                     ? discrepancy.differenceAmount.toLocaleString("es-AR")
                     : "—"
                 }.`

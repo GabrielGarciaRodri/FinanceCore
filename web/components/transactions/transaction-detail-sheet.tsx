@@ -101,13 +101,13 @@ function DetailBody({ tx }: { tx: TransactionDetailDto }): JSX.Element {
         </Section>
       )}
 
-      {tx.originalAmount !== null && tx.originalCurrency !== null && (
+      {tx.originalAmount != null && tx.originalCurrency != null && (
         <Section title="Conversión de moneda">
           <KV
             label="Monto original"
             value={formatMoney(tx.originalAmount, tx.originalCurrency)}
           />
-          {tx.exchangeRateUsed !== null && (
+          {tx.exchangeRateUsed != null && (
             <KV label="Tipo de cambio" value={tx.exchangeRateUsed.toString()} />
           )}
         </Section>

@@ -52,7 +52,9 @@ export function RecentReconciliations({ items }: RecentReconciliationsProps): JS
           </p>
         ) : (
           items.map((r) => {
-            const meta = STATUS_META[r.status] ?? STATUS_META.Pending;
+            // El backend devuelve `status` como string crudo en RecentReconciliationDto
+            // (ToString del enum), por eso casteamos contra el Record tipado.
+            const meta = STATUS_META[r.status as ReconciliationStatus] ?? STATUS_META.Pending;
             const Icon = meta.Icon;
             return (
               <Link

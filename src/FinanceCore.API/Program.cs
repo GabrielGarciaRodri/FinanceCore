@@ -305,6 +305,18 @@ try
     services.AddEndpointsApiExplorer();
     services.AddSwaggerGen(options =>
     {
+        // Respeta los nullable annotations del C# (#nullable enable) al
+        // generar los schemas. Sin esto, todas las propiedades salen como
+        // opcionales y nullable en el JSON, contaminando los types TypeScript
+        // generados por openapi-typescript.
+        options.SupportNonNullableReferenceTypes();
+        options.UseAllOfToExtendReferenceSchemas();
+
+        // Marca como `required` toda propiedad no-nullable. Sin esto las
+        // propiedades quedan opcionales en el OpenAPI aunque el tipo C# las
+        // declare non-nullable, generando types TS con `?` en todo.
+        options.SchemaFilter<FinanceCore.API.Swagger.RequiredNonNullableSchemaFilter>();
+
         options.SwaggerDoc("v1", new OpenApiInfo
         {
             Title = "FinanceCore API",

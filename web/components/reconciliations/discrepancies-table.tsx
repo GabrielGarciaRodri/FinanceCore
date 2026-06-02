@@ -66,13 +66,13 @@ export function DiscrepanciesTable({
                   {formatDate(d.internalDate)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-sm">
-                  {d.internalAmount !== null ? formatMoney(d.internalAmount, "") : "—"}
+                  {d.internalAmount != null ? formatMoney(d.internalAmount, "") : "—"}
                 </TableCell>
                 <TableCell className="text-xs tabular-nums text-muted-foreground">
                   {formatDate(d.externalDate)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-sm">
-                  {d.externalAmount !== null ? formatMoney(d.externalAmount, "") : "—"}
+                  {d.externalAmount != null ? formatMoney(d.externalAmount, "") : "—"}
                 </TableCell>
                 <TableCell
                   className={
@@ -81,7 +81,7 @@ export function DiscrepanciesTable({
                       : "text-right tabular-nums text-muted-foreground"
                   }
                 >
-                  {d.differenceAmount !== null
+                  {d.differenceAmount != null
                     ? formatMoney(Math.abs(d.differenceAmount), "")
                     : "—"}
                 </TableCell>

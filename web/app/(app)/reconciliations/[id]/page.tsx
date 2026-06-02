@@ -213,7 +213,7 @@ function DetailBody({
         {rec.startedAt && (
           <Stat label="Iniciada" value={formatDateTime(rec.startedAt)} />
         )}
-        {rec.durationMs !== null && (
+        {rec.durationMs != null && (
           <Stat label="Duración" value={`${(rec.durationMs / 1000).toFixed(2)}s`} />
         )}
         {rec.approvedBy && <Stat label="Aprobada por" value={rec.approvedBy} />}

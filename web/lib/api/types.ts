@@ -1,36 +1,77 @@
 /**
  * Tipos compartidos con el backend FinanceCore.API.
- * Espejo en TypeScript de los DTOs en C#. Mantener sincronizado.
+ *
+ * Estrategia mixta:
+ * - Los DTOs y enums que vienen del backend se re-exportan desde
+ *   `./generated.ts` (autogenerado vía `npm run gen:api`). Cambios en el
+ *   backend → corré `npm run gen:api` con el API local levantado → tsc te
+ *   marca dónde refactorear.
+ * - Los tipos frontend-only (helpers genéricos, string-literal unions de
+ *   enums que el backend serializa como `string`, request shapes de query
+ *   params) viven en este archivo a mano.
+ *
+ * Regenerar: con el API local corriendo en :5000, ejecutar
+ *     npm run gen:api
  */
+
+import type { components } from "./generated";
+
+type Schemas = components["schemas"];
+
+// ============================================================================
+// Re-exports desde el OpenAPI del backend
+// ============================================================================
 
 // ----- Auth -----
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  displayName: string | null;
-  roles: string[];
-}
-
-export interface AuthTokenResponse {
-  accessToken: string;
-  expiresAt: string;
-  refreshToken: string;
-  refreshTokenExpiresAt: string;
-  user: AuthUser | null;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface RefreshTokenRequest {
-  refreshToken: string;
-}
+export type AuthUser = Schemas["AuthenticatedUserResponse"];
+export type AuthTokenResponse = Schemas["AuthTokenResponse"];
+export type LoginRequest = Schemas["LoginRequest"];
+export type RefreshTokenRequest = Schemas["RefreshTokenRequest"];
 
 // ----- Transactions -----
 
+export type TransactionDetailDto = Schemas["TransactionDetailDto"];
+export type TransactionListItemDto = Schemas["TransactionListItemDto"];
+export type TransactionSummaryDto = Schemas["TransactionSummaryDto"];
+export type PagedTransactionsDto = Schemas["PagedTransactionsDto"];
+export type UploadTransactionsResponse = Schemas["UploadTransactionsResponse"];
+export type UploadRowError = Schemas["UploadRowError"];
+
+// ----- Accounts -----
+
+export type AccountListItemDto = Schemas["AccountListItemDto"];
+
+// ----- Reconciliations -----
+
+export type ReconciliationDto = Schemas["ReconciliationDto"];
+export type ReconciliationDiscrepancyDto = Schemas["ReconciliationDiscrepancyDto"];
+export type ReconciliationStatus = Schemas["ReconciliationStatus"];
+export type DiscrepancyType = Schemas["DiscrepancyType"];
+export type ResolutionType = Schemas["ResolutionType"];
+export type ResolveDiscrepancyRequest = Schemas["ResolveDiscrepancyRequest"];
+export type ApproveReconciliationRequest = Schemas["ApproveReconciliationRequest"];
+export type StatementUploadResponse = Schemas["StatementUploadResponse"];
+
+// ----- Dashboard -----
+
+export type DashboardDto = Schemas["DashboardDto"];
+export type BalanceByCurrencyDto = Schemas["BalanceByCurrencyDto"];
+export type ActivityPointDto = Schemas["ActivityPointDto"];
+export type RecentReconciliationDto = Schemas["RecentReconciliationDto"];
+export type DashboardQuickStatsDto = Schemas["DashboardQuickStatsDto"];
+
+// ============================================================================
+// Frontend-only (no aparecen en OpenAPI o backend los emite como string genérico)
+// ============================================================================
+
+/**
+ * String-literal unions para enums que el backend serializa como `string`
+ * crudo en response DTOs (e.g. `Status = r.Status.ToString()`). El backend
+ * los tiene como enums C# tipados; sólo no salen como enums OpenAPI porque
+ * los response mappers los pasan por ToString(). Mantener acá da autocomplete
+ * y narrowing en runtime.
+ */
 export type TransactionType =
   | "Debit"
   | "Credit"
@@ -49,47 +90,19 @@ export type TransactionStatus =
   | "Rejected"
   | "Reversed";
 
-export interface TransactionDetailDto {
-  id: string;
-  externalId: string;
-  accountId: string;
-  type: TransactionType;
-  status: TransactionStatus;
-  amount: number;
-  currencyCode: string;
-  valueDate: string;
-  bookingDate: string;
-  description: string | null;
-  category: string | null;
-  counterpartyName: string | null;
-  counterpartyAccount: string | null;
-  counterpartyBank: string | null;
-  originalAmount: number | null;
-  originalCurrency: string | null;
-  exchangeRateUsed: number | null;
-  reconciliationId: string | null;
-  reconciledAt: string | null;
-  createdAt: string;
-  processedAt: string | null;
-}
-
-export interface TransactionListItemDto {
-  id: string;
-  externalId: string;
-  accountId: string;
-  type: string;
-  status: string;
-  amount: number;
-  currencyCode: string;
-  valueDate: string;
-  description: string | null;
-  category: string | null;
-  isReconciled: boolean;
-}
+export type AccountType =
+  | "Checking"
+  | "Savings"
+  | "Credit"
+  | "Loan"
+  | "Treasury"
+  | "Investment";
 
 /**
- * Forma genérica del PagedResult<T> del backend.
- * Espejo de FinanceCore.Domain.Repositories.PagedResult.
+ * Forma genérica del PagedResult<T> del backend. No se autogenera porque
+ * openapi-typescript no instancia genéricos: el backend emite cada caso
+ * concreto (PagedTransactionsDto, ReconciliationDtoPagedResult, etc.).
+ * Este alias sirve para componer paginación nueva en el frontend.
  */
 export interface PagedResult<T> {
   items: T[];
@@ -101,24 +114,14 @@ export interface PagedResult<T> {
   hasPreviousPage: boolean;
 }
 
-export type PagedTransactionsDto = PagedResult<TransactionListItemDto>;
-
-export interface TransactionSummaryDto {
-  accountId: string;
-  startDate: string;
-  endDate: string;
-  totalCount: number;
-  totalDebits: number;
-  totalCredits: number;
-  netChange: number;
-  averageTransactionAmount: number;
-  largestDebit: number;
-  largestCredit: number;
-}
-
+/**
+ * Request shapes de query params para los endpoints de búsqueda. El OpenAPI
+ * los modela como `parameters` (no como schemas reutilizables), así que es
+ * más limpio mantenerlos a mano como interfaces TS.
+ */
 export interface SearchTransactionsRequest {
   accountId?: string;
-  startDate?: string;       // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD
   endDate?: string;
   type?: TransactionType;
   status?: TransactionStatus;
@@ -132,147 +135,13 @@ export interface SearchTransactionsRequest {
   sortDescending?: boolean;
 }
 
-// ----- Accounts -----
-
-export type AccountType =
-  | "Checking"
-  | "Savings"
-  | "Credit"
-  | "Loan"
-  | "Treasury"
-  | "Investment";
-
-export interface AccountListItemDto {
-  id: string;
-  accountNumber: string;
-  accountName: string;
-  type: AccountType | string;
-  currencyCode: string;
-  currentBalance: number;
-  isActive: boolean;
-  institutionId: string;
-}
-
-// ----- Reconciliations -----
-
-export type ReconciliationStatus =
-  | "Pending"
-  | "InProgress"
-  | "Completed"
-  | "CompletedWithDiscrepancies"
-  | "Failed";
-
-export type ResolutionType =
-  | "Pending"
-  | "MatchedManually"
-  | "AdjustmentCreated"
-  | "Ignored"
-  | "UnderInvestigation"
-  | "Escalated";
-
-export type DiscrepancyType =
-  | "MissingExternal"
-  | "MissingInternal"
-  | "AmountMismatch"
-  | "DateMismatch"
-  | "PossibleDuplicate"
-  | "ReferenceMismatch";
-
 export interface SearchReconciliationsRequest {
   accountId?: string;
-  startDate?: string;       // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD
   endDate?: string;
   status?: ReconciliationStatus;
   page?: number;
   pageSize?: number;
-}
-
-export interface ResolveDiscrepancyRequest {
-  resolution: ResolutionType;
-  resolvedBy: string;
-  notes?: string;
-}
-
-export interface ApproveReconciliationRequest {
-  approvedBy: string;
-  resolutionNotes?: string;
-}
-
-export interface ReconciliationDto {
-  id: string;
-  accountId: string;
-  reconciliationDate: string;
-  status: ReconciliationStatus;
-  totalInternalRecords: number;
-  totalExternalRecords: number;
-  matchedCount: number;
-  unmatchedInternal: number;
-  unmatchedExternal: number;
-  totalInternalAmount: number;
-  totalExternalAmount: number;
-  discrepancyAmount: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  durationMs: number | null;
-  processedBy: string;
-  approvedBy: string | null;
-  notes: string | null;
-  discrepancies: ReconciliationDiscrepancyDto[];
-}
-
-export interface ReconciliationDiscrepancyDto {
-  id: string;
-  discrepancyType: string;
-  internalTransactionId: string | null;
-  externalReference: string | null;
-  internalAmount: number | null;
-  externalAmount: number | null;
-  differenceAmount: number | null;
-  internalDate: string | null;
-  externalDate: string | null;
-  isResolved: boolean;
-  resolutionType: string | null;
-  resolutionNotes: string | null;
-  resolvedAt: string | null;
-}
-
-// ----- Dashboard -----
-
-export interface DashboardDto {
-  balancesByCurrency: BalanceByCurrencyDto[];
-  activity: ActivityPointDto[];
-  recentReconciliations: RecentReconciliationDto[];
-  stats: DashboardQuickStatsDto;
-}
-
-export interface BalanceByCurrencyDto {
-  currencyCode: string;
-  totalBalance: number;
-  accountCount: number;
-}
-
-export interface ActivityPointDto {
-  date: string;       // "YYYY-MM-DD"
-  count: number;
-  debits: number;     // valor absoluto (positivo)
-  credits: number;
-}
-
-export interface RecentReconciliationDto {
-  id: string;
-  accountId: string;
-  date: string;
-  status: ReconciliationStatus;
-  discrepancyCount: number;
-  discrepancyAmount: number;
-  approved: boolean;
-}
-
-export interface DashboardQuickStatsDto {
-  activeAccounts: number;
-  transactionsToday: number;
-  pendingDiscrepancies: number;
-  reconciliationsLast7Days: number;
 }
 
 // ----- Common -----
