@@ -12,14 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { PagedReconciliationsDto } from "@/lib/api/reconciliations";
 import type {
-  ReconciliationDto,
   ReconciliationStatus,
 } from "@/lib/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
 
 interface Props {
-  data: ReconciliationDto[] | undefined;
+  data: PagedReconciliationsDto | undefined;
   isLoading: boolean;
   isError: boolean;
   errorMessage?: string;
@@ -63,14 +63,14 @@ export function ReconciliationsTable({
                 Error cargando reconciliaciones{errorMessage ? `: ${errorMessage}` : ""}
               </TableCell>
             </TableRow>
-          ) : !data || data.length === 0 ? (
+          ) : !data || data.items.length === 0 ? (
             <TableRow>
               <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
                 No hay reconciliaciones para los filtros actuales.
               </TableCell>
             </TableRow>
           ) : (
-            data.map((r) => {
+            data.items.map((r) => {
               const totalUnmatched = r.unmatchedInternal + r.unmatchedExternal;
               const approved = Boolean(r.approvedBy);
               return (

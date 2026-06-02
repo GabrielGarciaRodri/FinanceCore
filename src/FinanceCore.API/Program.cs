@@ -124,6 +124,7 @@ try
     services.Configure<FinanceCore.Infrastructure.Reconciliations.ReconciliationOptions>(
         configuration.GetSection(FinanceCore.Infrastructure.Reconciliations.ReconciliationOptions.SectionName));
     services.AddScoped<IFileIngestionService, FileIngestionService>();
+    services.AddScoped<IUploadTransactionParser, UploadTransactionParser>();
     services.AddHttpClient<IExchangeRateProvider, ExchangeRateApiProvider>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(

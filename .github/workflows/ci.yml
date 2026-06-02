@@ -30,7 +30,12 @@ jobs:
         run: dotnet restore FinanceCore.slnx
 
       - name: Build (Release, no restore)
-        run: dotnet build FinanceCore.slnx --configuration Release --no-restore /warnaserror /p:TreatWarningsAsErrors=false
+        # /warnaserror:CS* limita el "warning as error" a warnings del compilador de C#
+        # (CS*) y excluye los de NuGet (NU*). Esto evita que CVE advisories
+        # publicadas después de un commit rompan el CI sin que hayamos
+        # cambiado código. Las advisories se siguen reportando como warnings
+        # y se gestionan vía bumps + NuGetAuditSuppress en los csproj.
+        run: dotnet build FinanceCore.slnx --configuration Release --no-restore /warnaserror:CS* /p:TreatWarningsAsErrors=false
 
   unit-tests:
     name: Unit tests (Domain)

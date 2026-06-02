@@ -61,7 +61,7 @@ export default function ReconciliationsPage(): JSX.Element {
       />
 
       <PaginationBar
-        itemsInPage={data?.length ?? 0}
+        data={data}
         page={filters.page}
         pageSize={filters.pageSize}
         onPageChange={(p) => setFilter("page", p)}

@@ -80,7 +80,7 @@ public class GetReconciliationByAccountAndDateQueryHandler
 
 #region SearchReconciliations
 
-public record SearchReconciliationsQuery : IRequest<Result<IReadOnlyList<ReconciliationDto>>>
+public record SearchReconciliationsQuery : IRequest<Result<PagedResult<ReconciliationDto>>>
 {
     public Guid? AccountId { get; init; }
     public DateOnly? StartDate { get; init; }
@@ -91,27 +91,44 @@ public record SearchReconciliationsQuery : IRequest<Result<IReadOnlyList<Reconci
 }
 
 public class SearchReconciliationsQueryHandler
-    : IRequestHandler<SearchReconciliationsQuery, Result<IReadOnlyList<ReconciliationDto>>>
+    : IRequestHandler<SearchReconciliationsQuery, Result<PagedResult<ReconciliationDto>>>
 {
     private readonly IUnitOfWork _unitOfWork;
 
     public SearchReconciliationsQueryHandler(IUnitOfWork unitOfWork) => _unitOfWork = unitOfWork;
 
-    public async Task<Result<IReadOnlyList<ReconciliationDto>>> Handle(
+    public async Task<Result<PagedResult<ReconciliationDto>>> Handle(
         SearchReconciliationsQuery request,
         CancellationToken cancellationToken)
     {
+        var pageSize = Math.Clamp(request.PageSize, 1, 500);
+        var page = Math.Max(1, request.Page);
+
+        // Total y página se resuelven con dos queries — el repo evita doble round-trip
+        // a la base sólo si fuese el caso de proyecciones complejas; acá es trivial.
+        var totalCount = await _unitOfWork.Reconciliations.CountAsync(
+            request.StartDate,
+            request.EndDate,
+            request.Status,
+            request.AccountId,
+            cancellationToken);
+
         var results = await _unitOfWork.Reconciliations.SearchAsync(
             request.StartDate,
             request.EndDate,
             request.Status,
             request.AccountId,
-            request.Page,
-            request.PageSize,
+            page,
+            pageSize,
             cancellationToken);
 
-        return Result<IReadOnlyList<ReconciliationDto>>.Success(
-            results.Select(ReconciliationMapper.ToDto).ToList());
+        return Result<PagedResult<ReconciliationDto>>.Success(new PagedResult<ReconciliationDto>
+        {
+            Items = results.Select(ReconciliationMapper.ToDto).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 }
 

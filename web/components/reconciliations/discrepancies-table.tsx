@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,6 +90,14 @@ export function DiscrepanciesTable({
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span className="text-xs">{d.resolutionType ?? "Resuelta"}</span>
+                    </div>
+                  ) : d.resolutionType ? (
+                    // Resolución no terminal (UnderInvestigation / Escalated):
+                    // ya se actuó pero el caso queda abierto. Mostrar el tipo
+                    // explícitamente para no confundir con "Pendiente" puro.
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs">{d.resolutionType}</span>
                     </div>
                   ) : (
                     <Badge variant="warning" className="font-normal">Pendiente</Badge>

@@ -84,7 +84,7 @@ public partial class ReconciliationsController : ControllerBase
     /// Busca conciliaciones con filtros opcionales.
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<ReconciliationDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FinanceCore.Domain.Repositories.PagedResult<ReconciliationDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
         [FromQuery] Guid? accountId,
         [FromQuery] DateOnly? startDate,

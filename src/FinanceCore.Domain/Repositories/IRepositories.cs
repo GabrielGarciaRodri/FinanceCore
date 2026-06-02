@@ -273,6 +273,17 @@ public interface IReconciliationRepository
         int pageSize = 50,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Cuenta reconciliaciones que matchean los mismos filtros que <see cref="SearchAsync"/>.
+    /// Útil para paginación con totalCount.
+    /// </summary>
+    Task<int> CountAsync(
+        DateOnly? startDate = null,
+        DateOnly? endDate = null,
+        ReconciliationStatus? status = null,
+        Guid? accountId = null,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ReconciliationDiscrepancy>> GetDiscrepanciesAsync(
         Guid reconciliationId,
         CancellationToken cancellationToken = default);

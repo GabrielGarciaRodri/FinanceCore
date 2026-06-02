@@ -9,10 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { PagedReconciliationsDto } from "@/lib/api/reconciliations";
 
 interface Props {
-  /** Cantidad de items que llegaron en la página actual. */
-  itemsInPage: number;
+  data: PagedReconciliationsDto | undefined;
   page: number;
   pageSize: number;
   onPageChange: (page: number) => void;
@@ -21,44 +21,52 @@ interface Props {
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
-/**
- * Paginación sin totalCount (el endpoint /api/reconciliations devuelve
- * lista plana). Inferimos hasNext con itemsInPage === pageSize.
- */
 export function PaginationBar({
-  itemsInPage,
+  data,
   page,
   pageSize,
   onPageChange,
   onPageSizeChange,
 }: Props): JSX.Element {
-  const hasPrev = page > 1;
-  const hasNext = itemsInPage === pageSize;
+  const total = data?.totalCount ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+  const hasPrev = data?.hasPreviousPage ?? page > 1;
+  const hasNext = data?.hasNextPage ?? false;
+
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 text-sm sm:flex-row">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Por página</span>
-        <Select
-          value={pageSize.toString()}
-          onValueChange={(v) => onPageSizeChange(Number(v))}
-        >
-          <SelectTrigger className="h-8 w-[80px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <SelectItem key={n} value={n.toString()}>
-                {n}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center gap-3">
+        <span className="text-muted-foreground">
+          {total === 0
+            ? "Sin resultados"
+            : `Mostrando ${from}–${to} de ${total.toLocaleString("es-AR")}`}
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Por página</span>
+          <Select
+            value={pageSize.toString()}
+            onValueChange={(v) => onPageSizeChange(Number(v))}
+          >
+            <SelectTrigger className="h-8 w-[80px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <SelectItem key={n} value={n.toString()}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground tabular-nums">
-          Página {page}
+          Página {page} de {Math.max(1, totalPages)}
         </span>
         <Button
           variant="outline"

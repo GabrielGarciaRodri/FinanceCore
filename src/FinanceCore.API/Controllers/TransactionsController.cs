@@ -6,6 +6,7 @@ using FinanceCore.Application.Transactions.Queries;
 using FinanceCore.Domain.Enums;
 using FinanceCore.Domain.Repositories;
 using FinanceCore.Infrastructure.Exports;
+using FinanceCore.Infrastructure.FileIngestion;
 
 namespace FinanceCore.API.Controllers;
 
@@ -222,6 +223,103 @@ public class TransactionsController : ControllerBase
     }
 
     /// <summary>
+    /// Sube un archivo CSV o XLSX con transacciones y dispara la ingesta.
+    /// Si se provee accountId por query string, sobreescribe el AccountId de cada fila.
+    /// </summary>
+    [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(20_000_000)] // 20 MB
+    [ProducesResponseType(typeof(UploadTransactionsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Upload(
+        IFormFile file,
+        [FromServices] IUploadTransactionParser parser,
+        [FromQuery] Guid? accountId,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Archivo requerido",
+                Detail = "Debe adjuntar un archivo CSV o XLSX no vacío.",
+                Status = StatusCodes.Status400BadRequest
+            });
+
+        var extension = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+        UploadFormat format;
+        SourceType sourceType;
+        if (extension == ".csv")
+        {
+            format = UploadFormat.Csv;
+            sourceType = SourceType.CsvFile;
+        }
+        else if (extension == ".xlsx")
+        {
+            format = UploadFormat.Xlsx;
+            sourceType = SourceType.ExcelFile;
+        }
+        else
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Formato no soportado",
+                Detail = $"Extensión '{extension}' no soportada. Use .csv o .xlsx.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var parseResult = await parser.ParseAsync(stream, format, accountId, cancellationToken);
+
+        _logger.LogInformation(
+            "Upload parsed. File={FileName} ValidRows={Valid} ErrorRows={Errors} AccountOverride={Override}",
+            file.FileName,
+            parseResult.Transactions.Count,
+            parseResult.Errors.Count,
+            accountId);
+
+        // Si no hay transacciones válidas, devolvemos sin invocar el command.
+        if (parseResult.Transactions.Count == 0)
+        {
+            return Ok(new UploadTransactionsResponse
+            {
+                FileName = file.FileName,
+                TotalRowsParsed = parseResult.Transactions.Count + parseResult.Errors.Count,
+                Ingestion = null,
+                ParseErrors = parseResult.Errors.Select(e => new UploadRowError(e.Row, e.Error)).ToList()
+            });
+        }
+
+        var command = new IngestTransactionsCommand
+        {
+            Source = file.FileName,
+            SourceType = sourceType,
+            Transactions = parseResult.Transactions,
+            FailOnFirstError = false
+        };
+
+        var ingestionResult = await _mediator.Send(command, cancellationToken);
+
+        if (ingestionResult.IsFailure)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Error en ingesta",
+                Detail = ingestionResult.Error,
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        return Ok(new UploadTransactionsResponse
+        {
+            FileName = file.FileName,
+            TotalRowsParsed = parseResult.Transactions.Count + parseResult.Errors.Count,
+            Ingestion = ingestionResult.Value,
+            ParseErrors = parseResult.Errors.Select(e => new UploadRowError(e.Row, e.Error)).ToList()
+        });
+    }
+
+    /// <summary>
     /// Exporta transacciones a CSV (streaming).
     /// </summary>
     [HttpGet("export.csv")]
@@ -410,5 +508,18 @@ public class TransactionListItem
     public string? Category { get; set; }
     public bool IsReconciled { get; set; }
 }
+
+/// <summary>
+/// Respuesta del endpoint POST /api/transactions/upload.
+/// </summary>
+public class UploadTransactionsResponse
+{
+    public string FileName { get; set; } = null!;
+    public int TotalRowsParsed { get; set; }
+    public IngestTransactionsResult? Ingestion { get; set; }
+    public IReadOnlyList<UploadRowError> ParseErrors { get; set; } = Array.Empty<UploadRowError>();
+}
+
+public record UploadRowError(int Row, string Error);
 
 #endregion

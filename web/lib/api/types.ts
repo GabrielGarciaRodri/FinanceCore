@@ -87,8 +87,12 @@ export interface TransactionListItemDto {
   isReconciled: boolean;
 }
 
-export interface PagedTransactionsDto {
-  items: TransactionListItemDto[];
+/**
+ * Forma genérica del PagedResult<T> del backend.
+ * Espejo de FinanceCore.Domain.Repositories.PagedResult.
+ */
+export interface PagedResult<T> {
+  items: T[];
   totalCount: number;
   page: number;
   pageSize: number;
@@ -96,6 +100,8 @@ export interface PagedTransactionsDto {
   hasNextPage: boolean;
   hasPreviousPage: boolean;
 }
+
+export type PagedTransactionsDto = PagedResult<TransactionListItemDto>;
 
 export interface TransactionSummaryDto {
   accountId: string;

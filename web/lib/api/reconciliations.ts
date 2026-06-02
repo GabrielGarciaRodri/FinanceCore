@@ -1,10 +1,13 @@
 import { apiClient } from "./client";
 import type {
   ApproveReconciliationRequest,
+  PagedResult,
   ReconciliationDto,
   ResolveDiscrepancyRequest,
   SearchReconciliationsRequest,
 } from "./types";
+
+export type PagedReconciliationsDto = PagedResult<ReconciliationDto>;
 
 function cleanParams(params: SearchReconciliationsRequest): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -16,9 +19,8 @@ function cleanParams(params: SearchReconciliationsRequest): Record<string, unkno
 }
 
 export const reconciliationsApi = {
-  async search(params: SearchReconciliationsRequest): Promise<ReconciliationDto[]> {
-    // El backend devuelve una lista plana (sin totalCount).
-    const { data } = await apiClient.get<ReconciliationDto[]>("/api/reconciliations", {
+  async search(params: SearchReconciliationsRequest): Promise<PagedReconciliationsDto> {
+    const { data } = await apiClient.get<PagedReconciliationsDto>("/api/reconciliations", {
       params: cleanParams(params),
     });
     return data;

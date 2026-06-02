@@ -77,6 +77,27 @@ public class ReconciliationRepository : IReconciliationRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountAsync(
+        DateOnly? startDate = null,
+        DateOnly? endDate = null,
+        ReconciliationStatus? status = null,
+        Guid? accountId = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Reconciliations.AsQueryable();
+
+        if (accountId.HasValue)
+            query = query.Where(r => r.AccountId == accountId.Value);
+        if (startDate.HasValue)
+            query = query.Where(r => r.ReconciliationDate >= startDate.Value);
+        if (endDate.HasValue)
+            query = query.Where(r => r.ReconciliationDate <= endDate.Value);
+        if (status.HasValue)
+            query = query.Where(r => r.Status == status.Value);
+
+        return await query.CountAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ReconciliationDiscrepancy>> GetDiscrepanciesAsync(
         Guid reconciliationId,
         CancellationToken ct = default)
