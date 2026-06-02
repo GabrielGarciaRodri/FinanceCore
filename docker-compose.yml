@@ -1,8 +1,8 @@
-version: '3.8'
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FINANCECORE - Docker Compose para Desarrollo
 # ═══════════════════════════════════════════════════════════════════════════════
+# Nota: el atributo "version" se eliminó porque Compose Specification (la versión
+# moderna de docker-compose) lo considera obsoleto y emite warning en cada run.
 
 services:
   # ─────────────────────────────────────────────────────────────────────────────

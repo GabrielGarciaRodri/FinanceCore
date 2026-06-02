@@ -85,17 +85,7 @@ public class DailyBalanceRepository : IDailyBalanceRepository
             if (existingSet.Contains(date))
                 continue;
 
-            missing.Add(new DailyBalance
-            {
-                AccountId = accountId,
-                BalanceDate = date,
-                OpeningBalance = 0m,
-                ClosingBalance = 0m,
-                TotalDebits = 0m,
-                TotalCredits = 0m,
-                TransactionCount = 0,
-                IsReconciled = false
-            });
+            missing.Add(DailyBalance.CreateEmpty(accountId, date));
         }
 
         return missing;

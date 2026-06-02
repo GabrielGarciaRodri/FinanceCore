@@ -34,6 +34,28 @@ public class DailyBalance : BaseEntity
 
     public virtual Account? Account { get; set; }
 
+    /// <summary>
+    /// Crea un DailyBalance "vacío" (sin movimientos) para una cuenta y fecha.
+    /// Setea CreatedAt explícitamente para evitar el caso histórico donde
+    /// `new DailyBalance { ... }` dejaba CreatedAt en DateTimeOffset.MinValue y
+    /// Postgres lo serializaba como '-infinity'.
+    /// </summary>
+    public static DailyBalance CreateEmpty(Guid accountId, DateOnly balanceDate)
+    {
+        return new DailyBalance
+        {
+            AccountId = accountId,
+            BalanceDate = balanceDate,
+            OpeningBalance = 0m,
+            ClosingBalance = 0m,
+            TotalDebits = 0m,
+            TotalCredits = 0m,
+            TransactionCount = 0,
+            IsReconciled = false,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+    }
+
     public void Update(decimal opening, decimal closing, decimal debits, decimal credits, int count)
     {
         OpeningBalance = opening;
