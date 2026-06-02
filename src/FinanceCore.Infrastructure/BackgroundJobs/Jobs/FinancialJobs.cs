@@ -168,20 +168,21 @@ public class TransactionIngestionJob
 
         if (result.IsSuccess)
         {
+            var value = result.GetValueOrThrow();
             _logger.LogInformation(
                 "[Job:{JobId}] Archivo {FileName} procesado. " +
                 "Éxitos: {Success}, Fallos: {Failed}, Duplicados: {Duplicates}",
-                jobId, file.FileName, 
-                result.Value.Succeeded, 
-                result.Value.Failed, 
-                result.Value.Duplicates);
+                jobId, file.FileName,
+                value.Succeeded,
+                value.Failed,
+                value.Duplicates);
 
             await _fileService.MoveToProcessedAsync(file, cancellationToken);
             return new FileIngestionMetrics(
-                result.Value.TotalReceived,
-                result.Value.Succeeded,
-                result.Value.Failed,
-                result.Value.Duplicates);
+                value.TotalReceived,
+                value.Succeeded,
+                value.Failed,
+                value.Duplicates);
         }
         _logger.LogError(
             "[Job:{JobId}] Error procesando archivo {FileName}: {Error}",

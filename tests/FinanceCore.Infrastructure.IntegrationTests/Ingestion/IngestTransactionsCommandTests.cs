@@ -50,9 +50,9 @@ public class IngestTransactionsCommandTests : IAsyncLifetime
         var result = await handler.Handle(command, CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Succeeded.Should().Be(3);
-        result.Value.Duplicates.Should().Be(0);
-        result.Value.Failed.Should().Be(0);
+        result.Value!.Succeeded.Should().Be(3);
+        result.Value!.Duplicates.Should().Be(0);
+        result.Value!.Failed.Should().Be(0);
 
         (await ctx.Transactions.CountAsync()).Should().Be(3);
     }
@@ -87,8 +87,8 @@ public class IngestTransactionsCommandTests : IAsyncLifetime
         }, CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Duplicates.Should().Be(1);
-        result.Value.Succeeded.Should().Be(0);
+        result.Value!.Duplicates.Should().Be(1);
+        result.Value!.Succeeded.Should().Be(0);
 
         (await ctx2.Transactions.CountAsync(t => t.ExternalId == "ext-dup")).Should().Be(1);
     }
@@ -116,8 +116,8 @@ public class IngestTransactionsCommandTests : IAsyncLifetime
         }, CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Succeeded.Should().Be(2);
-        result.Value.Failed.Should().Be(1);
+        result.Value!.Succeeded.Should().Be(2);
+        result.Value!.Failed.Should().Be(1);
 
         var saved = await ctx.Transactions.ToListAsync();
         saved.Should().HaveCount(2);

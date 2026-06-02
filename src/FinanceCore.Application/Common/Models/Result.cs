@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using System.Text.Json.Serialization;
 
 namespace FinanceCore.Application.Common.Models;
 
@@ -7,25 +7,37 @@ namespace FinanceCore.Application.Common.Models;
 /// </summary>
 public class Result
 {
-    protected Result(bool isSuccess, IEnumerable<string>? errors = null)
+    /// <summary>
+    /// Constructor JSON-friendly. Es el único que System.Text.Json puede invocar,
+    /// permitiendo round-trip (necesario para el CachingBehavior que serializa/
+    /// deserializa respuestas a Redis).
+    /// IMPORTANTE: los nombres y tipos de los parámetros deben matchear
+    /// exactamente las propiedades expuestas (IsSuccess, Errors). Por eso el
+    /// parámetro errors es IReadOnlyList&lt;string&gt; (no IEnumerable) — System.Text.Json
+    /// hace matching estricto de tipo, no por covarianza.
+    /// </summary>
+    [JsonConstructor]
+    protected Result(bool isSuccess, IReadOnlyList<string>? errors = null)
     {
         IsSuccess = isSuccess;
-        Errors = errors != null 
-            ? new ReadOnlyCollection<string>(errors.ToList()) 
-            : new ReadOnlyCollection<string>(new List<string>());
+        Errors = errors ?? Array.Empty<string>();
     }
 
     public bool IsSuccess { get; }
+
+    [JsonIgnore]
     public bool IsFailure => !IsSuccess;
-    public ReadOnlyCollection<string> Errors { get; }
-    
-    public string? Error => Errors.FirstOrDefault();
+
+    public IReadOnlyList<string> Errors { get; }
+
+    [JsonIgnore]
+    public string? Error => Errors.Count > 0 ? Errors[0] : null;
 
     public static Result Success() => new(true);
-    
+
     public static Result Failure(string error) => new(false, new[] { error });
-    
-    public static Result Failure(IEnumerable<string> errors) => new(false, errors);
+
+    public static Result Failure(IEnumerable<string> errors) => new(false, errors.ToArray());
 }
 
 /// <summary>
@@ -33,41 +45,59 @@ public class Result
 /// </summary>
 public class Result<T> : Result
 {
-    private readonly T? _value;
-
-    protected Result(T value) : base(true)
+    /// <summary>
+    /// Constructor JSON-friendly para deserialización vía System.Text.Json.
+    /// </summary>
+    [JsonConstructor]
+    protected Result(bool isSuccess, IReadOnlyList<string>? errors, T? value)
+        : base(isSuccess, errors)
     {
-        _value = value;
+        Value = value;
     }
 
-    protected Result(IEnumerable<string> errors) : base(false, errors)
+    // Constructors privados para los factory methods.
+    private Result(T value) : base(true, null)
     {
-        _value = default;
+        Value = value;
     }
 
-    public T Value
+    private Result(IReadOnlyList<string> errors) : base(false, errors)
     {
-        get
-        {
-            if (IsFailure)
-                throw new InvalidOperationException("No se puede acceder al valor de un resultado fallido.");
-            return _value!;
-        }
+        Value = default;
+    }
+
+    /// <summary>
+    /// Valor del resultado. Es null cuando <see cref="Result.IsFailure"/> es true.
+    /// Para acceso defensivo que arroja excepción en estado fallido, usar
+    /// <see cref="GetValueOrThrow"/>.
+    /// </summary>
+    public T? Value { get; }
+
+    /// <summary>
+    /// Obtiene el valor o arroja <see cref="InvalidOperationException"/> si el
+    /// resultado es fallido. Útil cuando el caller conoce que IsSuccess pero
+    /// quiere asegurar el contrato no-null.
+    /// </summary>
+    public T GetValueOrThrow()
+    {
+        if (IsFailure)
+            throw new InvalidOperationException("No se puede acceder al valor de un resultado fallido.");
+        return Value!;
     }
 
     public static Result<T> Success(T value) => new(value);
-    
+
     public new static Result<T> Failure(string error) => new(new[] { error });
-    
-    public new static Result<T> Failure(IEnumerable<string> errors) => new(errors);
+
+    public new static Result<T> Failure(IEnumerable<string> errors) => new(errors.ToArray());
 
     /// <summary>
     /// Transforma el valor si el resultado es exitoso.
     /// </summary>
     public Result<TNew> Map<TNew>(Func<T, TNew> mapper)
     {
-        return IsSuccess 
-            ? Result<TNew>.Success(mapper(Value)) 
+        return IsSuccess
+            ? Result<TNew>.Success(mapper(Value!))
             : Result<TNew>.Failure(Errors);
     }
 
@@ -76,7 +106,7 @@ public class Result<T> : Result
     /// </summary>
     public Result<TNew> Bind<TNew>(Func<T, Result<TNew>> binder)
     {
-        return IsSuccess ? binder(Value) : Result<TNew>.Failure(Errors);
+        return IsSuccess ? binder(Value!) : Result<TNew>.Failure(Errors);
     }
 
     /// <summary>
@@ -85,7 +115,7 @@ public class Result<T> : Result
     public Result<T> OnSuccess(Action<T> action)
     {
         if (IsSuccess)
-            action(Value);
+            action(Value!);
         return this;
     }
 
