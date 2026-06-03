@@ -6,6 +6,12 @@ node_modules/
 # Testing
 coverage/
 
+# Playwright E2E
+/e2e/.auth/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # Next.js
 .next/
 out/

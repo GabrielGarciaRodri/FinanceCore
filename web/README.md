@@ -39,6 +39,66 @@ permite ese origen vía CORS Development.
 | `npm run lint` | Lint con ESLint |
 | `npm run typecheck` | Type-check sin emitir |
 | `npm run gen:api` | Regenera `lib/api/generated.ts` desde el Swagger del backend |
+| `npm run test:e2e` | Corre la suite E2E de Playwright |
+| `npm run test:e2e:ui` | Corre la suite E2E en modo UI (debug interactivo) |
+
+## Tests E2E (Playwright)
+
+Suite end-to-end sobre los 3 flows backbone: **auth**, **upload de
+transacciones** y **reconciliación** (`e2e/*.spec.ts`).
+
+### Precondición: stack vivo
+
+Playwright **sólo levanta el front** (`next dev`). El backend y la base son
+precondición externa y tienen que estar arriba antes de correr la suite:
+
+```bash
+# (1) infra
+cd D:\FinanceCore
+docker compose up -d              # Postgres + Redis
+
+# (2) backend en Development (necesario para el seed admin y CORS :3000)
+cd src/FinanceCore.API
+dotnet run                        # http://localhost:5000
+```
+
+### Primera vez
+
+```bash
+cd web
+npm install
+npx playwright install chromium   # baja el browser (one-time)
+```
+
+### Correr
+
+```bash
+npm run test:e2e
+```
+
+`webServer` en `playwright.config.ts` levanta `next dev` automáticamente (y
+reusa uno ya corriendo fuera de CI). Variables opcionales: `E2E_BASE_URL`
+(default `http://localhost:3000`) y `E2E_API_URL` (default
+`http://localhost:5000`).
+
+### Cómo funciona
+
+- **Auth**: `auth.setup.ts` hace login programático (`POST /api/auth/login`) y
+  persiste el `storageState` en `e2e/.auth/user.json` (localStorage
+  `fc:access`/`fc:refresh`/`fc:user`). Sólo `auth.spec.ts` ejerce el form real.
+- **Aislamiento por corrida**: no hay endpoint para crear cuentas, así que
+  todos los tests usan la cuenta seed (`a1b2c3d4-…-001`, COP) con namespacing:
+  externalIds con prefijo `e2e-{runId}-` y una fecha de reconciliación única
+  por run. La acumulación de datos es inocua → **no hay teardown en v1**.
+- **Reconciliación**: la reconciliación-con-discrepancias se siembra vía API
+  (statement sobre fecha única); la UI sólo maneja detalle → resolver → aprobar.
+
+### Follow-ups conocidos
+
+- **CI de web**: hoy `ci.yml` sólo corre el backend (.NET). Levantar el stack
+  completo en Actions para esta suite es un lift dedicado.
+- **Teardown opcional**: `DELETE /api/dev/e2e-data?runId=` para limpiar datos
+  acumulados (no bloqueante por el namespacing).
 
 ## Tipos compartidos con el backend (codegen)
 
