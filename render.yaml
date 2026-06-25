@@ -38,6 +38,12 @@ services:
         sync: false
       - key: ConnectionStrings__HangfireConnection
         sync: false
+      # Sin Redis en el demo: string vacía => la app cae a caché en memoria
+      # (Program.cs: AddDistributedMemoryCache cuando Redis está vacío). El default
+      # en appsettings.json es localhost:6379, que en Render no existe y haría
+      # timeouts/500 en los endpoints que cachean.
+      - key: ConnectionStrings__Redis
+        value: ""
       # URL del front en Vercel (se conoce recién tras deployar el front). Setear
       # después y redeployar la API para que el CORS la permita.
       - key: Cors__AllowedOrigins__0
