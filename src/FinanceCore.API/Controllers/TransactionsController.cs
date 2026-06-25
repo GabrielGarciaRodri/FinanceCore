@@ -40,6 +40,7 @@ public class TransactionsController : ControllerBase
     /// <response code="400">Request inválido</response>
     /// <response code="500">Error interno del servidor</response>
     [HttpPost("ingest")]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(typeof(IngestTransactionsResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
@@ -227,6 +228,7 @@ public class TransactionsController : ControllerBase
     /// Si se provee accountId por query string, sobreescribe el AccountId de cada fila.
     /// </summary>
     [HttpPost("upload")]
+    [Authorize(Policy = "AdminOnly")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(20_000_000)] // 20 MB
     [ProducesResponseType(typeof(UploadTransactionsResponse), StatusCodes.Status200OK)]

@@ -48,7 +48,17 @@ public class IdentitySeeder : IIdentitySeeder
             }
         }
 
-        // 2. Crear admin por defecto si no existe ningún usuario
+        // 2. Admin por defecto: solo en un sistema sin usuarios (intención original).
+        await EnsureDefaultAdminAsync();
+
+        // 3. Usuario demo read-only (rol Reader): idempotente por email e
+        //    independiente del admin. Apto para Production (a diferencia del
+        //    DevController). Se activa con Identity:Seed:DemoUser:Enabled.
+        await EnsureDemoReaderUserAsync();
+    }
+
+    private async Task EnsureDefaultAdminAsync()
+    {
         if (_userManager.Users.Any())
         {
             _logger.LogDebug("Usuarios existentes detectados; saltando creación de admin por defecto.");
@@ -86,5 +96,46 @@ public class IdentitySeeder : IIdentitySeeder
         _logger.LogWarning(
             "Usuario admin por defecto creado: {Email}. CAMBIAR LA CONTRASEÑA EN EL PRIMER LOGIN.",
             _options.AdminEmail);
+    }
+
+    private async Task EnsureDemoReaderUserAsync()
+    {
+        var demo = _options.DemoUser;
+        if (demo is null || !demo.Enabled)
+            return;
+
+        if (string.IsNullOrWhiteSpace(demo.Email) || string.IsNullOrWhiteSpace(demo.Password))
+        {
+            _logger.LogWarning("DemoUser habilitado pero Email/Password vacíos; se omite.");
+            return;
+        }
+
+        if (await _userManager.FindByEmailAsync(demo.Email) is not null)
+        {
+            _logger.LogDebug("Usuario demo {Email} ya existe; nada que hacer.", demo.Email);
+            return;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = demo.Email,
+            Email = demo.Email,
+            EmailConfirmed = true,
+            DisplayName = demo.DisplayName,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var result = await _userManager.CreateAsync(user, demo.Password);
+        if (!result.Succeeded)
+        {
+            _logger.LogError(
+                "No se pudo crear el usuario demo read-only: {Errors}",
+                string.Join("; ", result.Errors.Select(e => $"{e.Code}: {e.Description}")));
+            return;
+        }
+
+        await _userManager.AddToRoleAsync(user, "Reader");
+        _logger.LogInformation("Usuario demo read-only creado: {Email} (rol Reader).", demo.Email);
     }
 }

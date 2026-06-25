@@ -26,4 +26,18 @@ public class IdentitySeedOptions
     public string AdminEmail { get; set; } = "admin@financecore.local";
     public string AdminPassword { get; set; } = "ChangeMe!2026";
     public string AdminDisplayName { get; set; } = "Default Administrator";
+
+    /// <summary>Usuario demo de solo-lectura (rol Reader). Deshabilitado por
+    /// defecto; se activa en el entorno de demo público vía
+    /// Identity:Seed:DemoUser:Enabled.</summary>
+    public DemoUserSeedOptions DemoUser { get; set; } = new();
+}
+
+/// <summary>Opciones del usuario demo read-only para el entorno de demo público.</summary>
+public class DemoUserSeedOptions
+{
+    public bool Enabled { get; set; } = false;
+    public string Email { get; set; } = "demo@financecore.local";
+    public string Password { get; set; } = "Demo!2026";
+    public string DisplayName { get; set; } = "Demo (read-only)";
 }
