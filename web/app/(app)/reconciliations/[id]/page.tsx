@@ -8,6 +8,8 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Download, Loader2 } from "lucide-
 import { toast } from "sonner";
 import { ApproveReconciliationDialog } from "@/components/reconciliations/approve-reconciliation-dialog";
 import { DiscrepanciesTable } from "@/components/reconciliations/discrepancies-table";
+import { ReadOnlyNotice } from "@/components/auth/read-only-notice";
+import { useAuth } from "@/lib/auth/context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -114,6 +116,7 @@ function DetailBody({
   onExportClick: () => void;
   exporting: boolean;
 }): JSX.Element {
+  const { canWrite } = useAuth();
   const approved = Boolean(rec.approvedBy);
   const unresolved = rec.discrepancies.filter((d) => !d.isResolved).length;
 
@@ -152,17 +155,21 @@ function DetailBody({
             )}
             Export discrepancias CSV
           </Button>
-          <Button
-            size="sm"
-            onClick={onApproveClick}
-            disabled={approved}
-            title={approved ? "Ya aprobada" : "Aprobar reconciliación"}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Aprobar
-          </Button>
+          {canWrite && (
+            <Button
+              size="sm"
+              onClick={onApproveClick}
+              disabled={approved}
+              title={approved ? "Ya aprobada" : "Aprobar reconciliación"}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Aprobar
+            </Button>
+          )}
         </div>
       </header>
+
+      {!canWrite && <ReadOnlyNotice />}
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Registros internos" value={rec.totalInternalRecords.toString()} />
@@ -199,7 +206,7 @@ function DetailBody({
         <DiscrepanciesTable
           reconciliationId={rec.id}
           discrepancies={rec.discrepancies}
-          locked={approved}
+          locked={approved || !canWrite}
         />
       </section>
 

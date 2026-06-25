@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import { StatementUploadForm } from "@/components/upload/statement-upload-form";
 import { TransactionsUploadForm } from "@/components/upload/transactions-upload-form";
+import { ReadOnlyNotice } from "@/components/auth/read-only-notice";
+import { useAuth } from "@/lib/auth/context";
 import {
   Tabs,
   TabsContent,
@@ -16,6 +18,7 @@ type TabKey = "transactions" | "statement";
 const VALID_TABS: TabKey[] = ["transactions", "statement"];
 
 export default function UploadPage(): JSX.Element {
+  const { canWrite } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -45,6 +48,15 @@ export default function UploadPage(): JSX.Element {
         </p>
       </header>
 
+      {!canWrite ? (
+        <div className="rounded-md border bg-card p-6">
+          <ReadOnlyNotice />
+          <p className="mt-3 text-xs text-muted-foreground">
+            La carga de archivos crea o modifica datos, por lo que está deshabilitada
+            para la cuenta de demo (solo lectura).
+          </p>
+        </div>
+      ) : (
       <Tabs value={activeTab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="transactions">
@@ -84,6 +96,7 @@ export default function UploadPage(): JSX.Element {
           </div>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

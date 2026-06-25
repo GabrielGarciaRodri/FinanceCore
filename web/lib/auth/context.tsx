@@ -23,6 +23,8 @@ interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   hasRole: (role: string) => boolean;
+  /** true si el usuario puede mutar: rol Admin/FinanceAdmin (espejo de la política "AdminOnly" del backend). */
+  canWrite: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -102,6 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     [user]
   );
 
+  // Capacidad de escritura = rol Admin/FinanceAdmin, espejo de la política
+  // "AdminOnly" del backend. El rol Reader (usuario demo) queda en solo-lectura.
+  const canWrite = useMemo<boolean>(
+    () => (user?.roles ?? []).some((r) => r === "Admin" || r === "FinanceAdmin"),
+    [user]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -110,8 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       login,
       logout,
       hasRole,
+      canWrite,
     }),
-    [user, isLoading, login, logout, hasRole]
+    [user, isLoading, login, logout, hasRole, canWrite]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

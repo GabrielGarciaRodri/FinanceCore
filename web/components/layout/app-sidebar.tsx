@@ -9,23 +9,28 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth/context";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Solo visible para usuarios con permiso de escritura (oculto para Reader/demo). */
+  writeOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transacciones", icon: Receipt },
   { href: "/reconciliations", label: "Reconciliaciones", icon: ScrollText },
-  { href: "/upload", label: "Cargar archivos", icon: Upload },
+  { href: "/upload", label: "Cargar archivos", icon: Upload, writeOnly: true },
 ];
 
 export function AppSidebar(): JSX.Element {
   const pathname = usePathname();
+  const { canWrite } = useAuth();
+  const items = NAV.filter((item) => !item.writeOnly || canWrite);
 
   return (
     <aside className="hidden w-56 shrink-0 border-r bg-muted/30 lg:flex lg:flex-col">
@@ -34,7 +39,7 @@ export function AppSidebar(): JSX.Element {
         <span className="text-sm font-semibold">FinanceCore</span>
       </div>
       <nav className="flex-1 space-y-1 p-2">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const active =
             pathname === item.href || pathname?.startsWith(`${item.href}/`);
