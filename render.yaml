@@ -1,0 +1,44 @@
+# Render Blueprint — API de FinanceCore (demo público).
+# Uso: en Render → New → Blueprint → conectar este repo. Render lee este archivo
+# y crea el servicio. Las envs `sync: false` se cargan a mano en el dashboard
+# (secretos o valores que dependen de otros servicios).
+#
+# El front (Next) va en Vercel, no acá. La DB Postgres va en Neon, no acá.
+services:
+  - type: web
+    name: financecore-api
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main # cambiar si tu rama por defecto no es main
+    dockerfilePath: src/FinanceCore.API/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Opción A: el demo corre en Development para seedear el admin y habilitar
+      # el endpoint de carga de datos demo (POST /api/dev/seed-reconciliations-demo).
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Development
+      # Crea el usuario demo read-only (rol Reader). Login del visitante.
+      - key: Identity__Seed__DemoUser__Enabled
+        value: "true"
+      # IMPORTANTE: el repo es público y trae la pass de admin por defecto en
+      # appsettings.json. Sobreescribila con algo PRIVADO antes del primer deploy:
+      # el seeder crea el admin una sola vez, en la primera corrida sobre la DB
+      # fresca. Si lo dejás por defecto, cualquiera que lea el repo es admin.
+      - key: Identity__Seed__AdminPassword
+        sync: false
+      # Clave de firma JWT (>= 32 chars ascii). Generá una random.
+      - key: Jwt__SigningKey
+        sync: false
+      # Postgres de Neon en formato KEYWORD de Npgsql (no la URL postgresql://).
+      # Ej: Host=ep-xxx.neon.tech;Database=db;Username=u;Password=p;SSL Mode=Require;Trust Server Certificate=true
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: ConnectionStrings__HangfireConnection
+        sync: false
+      # URL del front en Vercel (se conoce recién tras deployar el front). Setear
+      # después y redeployar la API para que el CORS la permita.
+      - key: Cors__AllowedOrigins__0
+        sync: false
