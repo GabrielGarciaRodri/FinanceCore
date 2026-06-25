@@ -1,0 +1,28 @@
+# Higiene del build context para la imagen de la API (.NET).
+# El Dockerfile solo copia src/, así que excluimos todo lo pesado/irrelevante
+# para que el daemon no reciba node_modules, binarios ni el front.
+
+# Build outputs .NET
+**/bin/
+**/obj/
+
+# Front (Next) — no va en la imagen de la API
+web/
+
+# Tests, migraciones SQL (se aplican aparte a la DB gestionada) y docs
+tests/
+database/
+docs/
+*.md
+
+# Tooling / local
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+logs/
+**/*.user
+**/.env
+**/.env.*
+docker-compose.yml
