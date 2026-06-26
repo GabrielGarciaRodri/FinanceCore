@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LogoMark } from "@/components/layout/logo-mark";
 import { useAuth } from "@/lib/auth/context";
 
 const schema = z.object({
@@ -59,7 +60,10 @@ export function LoginForm(): JSX.Element {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>FinanceCore</CardTitle>
+        <div className="flex items-center gap-2">
+          <LogoMark className="h-7 w-7 text-primary" />
+          <CardTitle>FinanceCore</CardTitle>
+        </div>
         <CardDescription>Ingresá con tus credenciales.</CardDescription>
       </CardHeader>
       <CardContent>
