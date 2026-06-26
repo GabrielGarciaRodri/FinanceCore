@@ -26,10 +26,12 @@ public class DevController : ControllerBase
     public DevController(ILogger<DevController> logger) => _logger = logger;
 
     /// <summary>
-    /// Genera transacciones internas + reconciliaciones de demo sobre la cuenta seed.
-    /// Crea 4 reconciliaciones (hoy, -7, -14, -21 días) con mix de estados:
-    /// alguna aprobada, algunas con discrepancias resueltas y otras pendientes.
-    /// Sólo disponible en entorno Development.
+    /// Genera datos de demo con sabor de conciliación de pasarelas (Wompi/PayU/
+    /// MercadoPago/ePayco/Addi) sobre la cuenta seed: liquidaciones, comisiones,
+    /// retenciones y contracargos, repartidos en varias reconciliaciones con mix
+    /// de estados (pendiente / parcialmente resuelta / aprobada) y discrepancias
+    /// realistas (liquidación T+1, referencia de pasarela, contracargo bank-only,
+    /// dispersión pendiente). Sólo disponible en entorno Development.
     /// </summary>
     [HttpPost("seed-reconciliations-demo")]
     [ProducesResponseType(typeof(SeedReconciliationsResponse), StatusCodes.Status200OK)]
@@ -65,9 +67,13 @@ public class DevController : ControllerBase
         var dates = new[]
         {
             today,
+            today.AddDays(-3),
             today.AddDays(-7),
+            today.AddDays(-10),
             today.AddDays(-14),
+            today.AddDays(-18),
             today.AddDays(-21),
+            today.AddDays(-25),
         };
 
         var summary = new SeedReconciliationsResponse
@@ -80,7 +86,8 @@ public class DevController : ControllerBase
         {
             var date = dates[i];
 
-            // 1. Generar 8 transacciones internas balanceadas (no driftean balance).
+            // 1. Generar liquidaciones de pasarela + costos (créditos > débitos →
+            //    el balance de la cuenta corriente no queda negativo).
             var txns = GenerateInternalTransactions(account, date, runId, batchIndex: i);
             foreach (var tx in txns)
             {
@@ -103,11 +110,8 @@ public class DevController : ControllerBase
             summary.ReconciliationIds.Add(result.ReconciliationId);
             summary.DiscrepanciesCreated += result.DiscrepancyCount;
 
-            // 4. Post-acciones para variar estados visibles en la UI:
-            //    - Reconciliación 1 (más reciente): nada (todo pendiente)
-            //    - Reconciliación 2: resuelve 1 discrepancia
-            //    - Reconciliación 3: resuelve 2 discrepancias + aprueba
-            //    - Reconciliación 4 (más antigua): aprueba directo (queda con discrepancias unresolved)
+            // 4. Post-acciones (cíclicas por batch % 4) para variar estados en la UI:
+            //    pendiente / resuelta parcial / resuelta + aprobada / aprobada con pendientes.
             await ApplyPostActions(unitOfWork, result.ReconciliationId, i, cancellationToken, summary);
         }
 
@@ -122,8 +126,11 @@ public class DevController : ControllerBase
     }
 
     /// <summary>
-    /// Genera 8 transacciones balanceadas (4 créditos de 10K + 4 débitos de 5K)
-    /// → impacto neto +20K COP por batch, lejos del límite del balance inicial.
+    /// Genera las transacciones internas de un batch con sabor de pasarelas:
+    /// liquidaciones (créditos, montos variados) + comisiones/retenciones (débitos,
+    /// como % de las liquidaciones). Devuelve créditos antes que débitos para que
+    /// el balance de la cuenta corriente nunca quede negativo (los costos son una
+    /// fracción de lo acreditado).
     /// </summary>
     private static List<Transaction> GenerateInternalTransactions(
         Account account,
@@ -131,59 +138,70 @@ public class DevController : ControllerBase
         string runId,
         int batchIndex)
     {
-        var txns = new List<Transaction>(8);
         var currency = account.Currency.Code;
         var rng = new Random(HashCode.Combine(runId, batchIndex));   // determinista por batch
+        var gateways = new[] { "Wompi", "PayU", "MercadoPago", "ePayco", "Addi" };
 
-        var descriptions = new[]
+        // Liquidaciones (créditos): montos variados 350k–4.8M, redondeados al millar.
+        var credits = new List<Transaction>();
+        var settlementAmounts = new List<decimal>();
+        var settlementCount = 5 + (batchIndex % 2);
+        for (var i = 0; i < settlementCount; i++)
         {
-            "Pago proveedor INSUMOS-SA",
-            "Cobranza cliente ACME-LTDA",
-            "Transferencia interna ahorros",
-            "Pago servicios públicos",
-            "Cobro factura #",
-            "Comisión bancaria",
-            "Depósito en efectivo sucursal",
-            "Pago nómina parcial"
-        };
-
-        for (var i = 0; i < 4; i++)
-        {
-            // Crédito (+10.000)
-            var creditDesc = $"{descriptions[i % descriptions.Length]} {rng.Next(1000, 9999)}";
-            txns.Add(Transaction.CreateCredit(
-                externalId: $"demo-{runId}-{date:yyyyMMdd}-c{i}",
+            var gw = gateways[rng.Next(gateways.Length)];
+            var sales = rng.Next(18, 260);
+            var amount = rng.Next(350, 4800) * 1000m;
+            settlementAmounts.Add(amount);
+            credits.Add(Transaction.CreateCredit(
+                externalId: $"demo-{runId}-{date:yyyyMMdd}-liq{i}",
                 source: SeederTag,
                 accountId: account.Id,
-                amount: 10_000m,
+                amount: amount,
                 currencyCode: currency,
                 valueDate: date,
                 bookingDate: date,
-                description: creditDesc));
-
-            // Débito (−5.000)
-            var debitDesc = $"{descriptions[(i + 4) % descriptions.Length]} {rng.Next(1000, 9999)}";
-            txns.Add(Transaction.CreateDebit(
-                externalId: $"demo-{runId}-{date:yyyyMMdd}-d{i}",
-                source: SeederTag,
-                accountId: account.Id,
-                amount: 5_000m,
-                currencyCode: currency,
-                valueDate: date,
-                bookingDate: date,
-                description: debitDesc));
+                description: $"Liquidación {gw} · {sales} ventas"));
         }
 
-        return txns;
+        // Costos (débitos) como % de las liquidaciones → siempre < total acreditado.
+        var feeKinds = new (string Label, decimal Rate)[]
+        {
+            ("Comisión {0} (2,99% + IVA)", 0.0299m),
+            ("Retención en la fuente", 0.0150m),
+            ("Retención ICA", 0.0110m),
+            ("Comisión pasarela {0}", 0.0265m),
+            ("IVA sobre comisión", 0.0057m),
+        };
+        var debits = new List<Transaction>();
+        var feeCount = 4 + (batchIndex % 2);
+        for (var i = 0; i < feeCount; i++)
+        {
+            var gw = gateways[rng.Next(gateways.Length)];
+            var (label, rate) = feeKinds[i % feeKinds.Length];
+            var basis = settlementAmounts[i % settlementAmounts.Count];
+            var amount = Math.Max(1000m, Math.Round(basis * rate / 1000m) * 1000m);
+            debits.Add(Transaction.CreateDebit(
+                externalId: $"demo-{runId}-{date:yyyyMMdd}-fee{i}",
+                source: SeederTag,
+                accountId: account.Id,
+                amount: amount,
+                currencyCode: currency,
+                valueDate: date,
+                bookingDate: date,
+                description: string.Format(label, gw)));
+        }
+
+        return credits.Concat(debits).ToList();
     }
 
     /// <summary>
-    /// Construye un statement bancario con mix de coincidencias y discrepancias:
-    /// - 5 líneas que matchean exactamente
-    /// - 1 con amount mismatch (+1 al monto real)
-    /// - 1 con date mismatch (+1 día)
-    /// - 1 línea que no existe en internas (MissingInternal en la nomenclatura del engine)
-    /// - 2 transacciones internas omitidas → MissingExternal
+    /// Construye el extracto del batch con discrepancias realistas de conciliación
+    /// de pasarelas:
+    /// - la mayoría de las liquidaciones matchean exacto,
+    /// - una cae T+1 (DateMismatch, dentro de tolerancia),
+    /// - otra trae la referencia de la pasarela distinta a la interna (ReferenceMismatch),
+    /// - un contracargo bank-only sin contraparte interna (MissingInternal),
+    /// - las 2 últimas internas no aparecen → pendiente de desglose (MissingExternal).
     /// </summary>
     private static List<ExternalStatementLine> BuildStatement(
         IReadOnlyList<Transaction> internalTxns,
@@ -191,53 +209,49 @@ public class DevController : ControllerBase
         DateOnly date)
     {
         var statement = new List<ExternalStatementLine>();
+        var n = internalTxns.Count;
+        var gateways = new[] { "Wompi", "PayU", "MercadoPago" };
 
-        // 5 matches exactos: las primeras 5 transacciones.
-        for (var i = 0; i < 5 && i < internalTxns.Count; i++)
+        // Reservamos las 2 últimas internas: no van al extracto → MissingExternal.
+        var matchedUpTo = Math.Max(1, n - 2);
+        for (var i = 0; i < matchedUpTo; i++)
         {
             var tx = internalTxns[i];
+            var reference = tx.ExternalId;
+            var valueDate = tx.ValueDate;
+            var description = tx.Description;
+
+            if (i == 1)
+            {
+                // Liquidación abonada T+1 → DateMismatch (dentro de la tolerancia).
+                valueDate = tx.ValueDate.AddDays(1);
+            }
+            else if (i == 2)
+            {
+                // El extracto trae la referencia de la pasarela, distinta a la
+                // interna → ReferenceMismatch (matchea por monto y fecha iguales).
+                reference = $"STL-{gateways[(date.DayNumber + i) % gateways.Length]}-{date:yyMMdd}{i}".ToUpperInvariant();
+                description = $"Abono pasarela ref {reference}";
+            }
+
             statement.Add(new ExternalStatementLine(
-                ExternalReference: tx.ExternalId,
+                ExternalReference: reference,
                 Amount: tx.Amount.Amount,
                 CurrencyCode: currencyCode,
-                ValueDate: tx.ValueDate,
-                Description: tx.Description));
+                ValueDate: valueDate,
+                Description: description));
         }
 
-        // 1 amount mismatch: tx index 5
-        if (internalTxns.Count > 5)
-        {
-            var tx = internalTxns[5];
-            statement.Add(new ExternalStatementLine(
-                ExternalReference: tx.ExternalId,
-                Amount: tx.Amount.Amount + (tx.Amount.Amount > 0 ? 1m : -1m),
-                CurrencyCode: currencyCode,
-                ValueDate: tx.ValueDate,
-                Description: tx.Description));
-        }
-
-        // 1 date mismatch: tx index 6, fecha +1 día
-        if (internalTxns.Count > 6)
-        {
-            var tx = internalTxns[6];
-            statement.Add(new ExternalStatementLine(
-                ExternalReference: tx.ExternalId,
-                Amount: tx.Amount.Amount,
-                CurrencyCode: currencyCode,
-                ValueDate: tx.ValueDate.AddDays(1),
-                Description: tx.Description));
-        }
-
-        // 1 missing internal: línea bancaria sin contraparte interna
+        // Contracargo bank-only (monto no-millar para no matchear por casualidad
+        // ninguna interna) → MissingInternal.
+        var gw = gateways[(date.DayNumber + n) % gateways.Length];
+        var chargeback = (80 + ((date.DayNumber * 7 + n) % 90)) * 1000m + 350m;
         statement.Add(new ExternalStatementLine(
-            ExternalReference: $"bank-only-{date:yyyyMMdd}",
-            Amount: 2_500m,
+            ExternalReference: $"CHG-{date:yyMMdd}",
+            Amount: -chargeback,
             CurrencyCode: currencyCode,
             ValueDate: date,
-            Description: "Cargo automático mantenimiento"));
-
-        // tx index 7 NO aparece en statement → MissingExternal
-        // (no agregamos nada, simplemente la omitimos)
+            Description: $"Contracargo {gw} · venta disputada"));
 
         return statement;
     }
@@ -257,7 +271,7 @@ public class DevController : ControllerBase
 
         var discrepancies = rec.Discrepancies.ToList();
 
-        switch (batchIndex)
+        switch (batchIndex % 4)
         {
             case 0:
                 // Más reciente: sin acciones (todo pendiente).
