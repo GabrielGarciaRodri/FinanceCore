@@ -24,9 +24,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { reconciliationsApi } from "@/lib/api/reconciliations";
 import type {
+  DiscrepancyType,
   ReconciliationDiscrepancyDto,
   ResolutionType,
 } from "@/lib/api/types";
+import { discrepancyTypeLabel, resolutionTypeLabel } from "@/lib/i18n/labels";
 import { useAuth } from "@/lib/auth/context";
 
 /** Opciones de resolución manual (excluye "Pending" que es el estado inicial). */
@@ -90,7 +92,7 @@ export function ResolveDiscrepancyDialog({
           <DialogTitle>Resolver discrepancia</DialogTitle>
           <DialogDescription>
             {discrepancy
-              ? `Tipo: ${discrepancy.discrepancyType}. Diferencia: ${
+              ? `Tipo: ${discrepancyTypeLabel(discrepancy.discrepancyType as DiscrepancyType)}. Diferencia: ${
                   discrepancy.differenceAmount != null
                     ? discrepancy.differenceAmount.toLocaleString("es-AR")
                     : "—"
@@ -112,7 +114,7 @@ export function ResolveDiscrepancyDialog({
               <SelectContent>
                 {RESOLUTION_OPTIONS.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {r}
+                    {resolutionTypeLabel(r)}
                   </SelectItem>
                 ))}
               </SelectContent>

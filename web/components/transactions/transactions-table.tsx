@@ -18,6 +18,7 @@ import type {
   TransactionType,
 } from "@/lib/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
+import { transactionStatusLabel, transactionTypeLabel } from "@/lib/i18n/labels";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -49,7 +50,7 @@ export function TransactionsTable({
             <TableHead className="w-[120px]">Tipo</TableHead>
             <TableHead className="w-[120px]">Estado</TableHead>
             <TableHead className="w-[170px] text-right">Monto</TableHead>
-            <TableHead className="w-[60px] text-center">Recon.</TableHead>
+            <TableHead className="w-[60px] text-center">Concil.</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -115,12 +116,12 @@ function Row({
       </TableCell>
       <TableCell>
         <Badge variant={typeBadgeVariant(tx.type as TransactionType)} className="font-normal">
-          {tx.type}
+          {transactionTypeLabel(tx.type as TransactionType)}
         </Badge>
       </TableCell>
       <TableCell>
         <Badge variant={statusBadgeVariant(tx.status as TransactionStatus)} className="font-normal">
-          {tx.status}
+          {transactionStatusLabel(tx.status as TransactionStatus)}
         </Badge>
       </TableCell>
       <TableCell

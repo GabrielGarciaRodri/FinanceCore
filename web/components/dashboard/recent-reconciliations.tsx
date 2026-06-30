@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn, formatDate } from "@/lib/utils";
+import { reconciliationStatusLabel } from "@/lib/i18n/labels";
 import type {
   RecentReconciliationDto,
   ReconciliationStatus,
@@ -18,19 +19,17 @@ interface RecentReconciliationsProps {
   items: RecentReconciliationDto[];
 }
 
+// La etiqueta en español sale del map central (lib/i18n/labels); acá solo
+// vive lo visual específico de este componente: variante de badge + ícono.
 const STATUS_META: Record<
   ReconciliationStatus,
-  { label: string; variant: BadgeProps["variant"]; Icon: React.ComponentType<{ className?: string }> }
+  { variant: BadgeProps["variant"]; Icon: React.ComponentType<{ className?: string }> }
 > = {
-  Pending: { label: "Pendiente", variant: "outline", Icon: Clock },
-  InProgress: { label: "En curso", variant: "secondary", Icon: Loader2 },
-  Completed: { label: "Completada", variant: "success", Icon: CheckCircle2 },
-  CompletedWithDiscrepancies: {
-    label: "Con discrepancias",
-    variant: "warning",
-    Icon: AlertCircle,
-  },
-  Failed: { label: "Falló", variant: "destructive", Icon: XCircle },
+  Pending: { variant: "outline", Icon: Clock },
+  InProgress: { variant: "secondary", Icon: Loader2 },
+  Completed: { variant: "success", Icon: CheckCircle2 },
+  CompletedWithDiscrepancies: { variant: "warning", Icon: AlertCircle },
+  Failed: { variant: "destructive", Icon: XCircle },
 };
 
 export function RecentReconciliations({ items }: RecentReconciliationsProps): JSX.Element {
@@ -54,7 +53,8 @@ export function RecentReconciliations({ items }: RecentReconciliationsProps): JS
           items.map((r) => {
             // El backend devuelve `status` como string crudo en RecentReconciliationDto
             // (ToString del enum), por eso casteamos contra el Record tipado.
-            const meta = STATUS_META[r.status as ReconciliationStatus] ?? STATUS_META.Pending;
+            const status = r.status as ReconciliationStatus;
+            const meta = STATUS_META[status] ?? STATUS_META.Pending;
             const Icon = meta.Icon;
             return (
               <Link
@@ -85,7 +85,7 @@ export function RecentReconciliations({ items }: RecentReconciliationsProps): JS
                       {r.discrepancyCount} disc.
                     </span>
                   )}
-                  <Badge variant={meta.variant}>{meta.label}</Badge>
+                  <Badge variant={meta.variant}>{reconciliationStatusLabel(status)}</Badge>
                   {r.approved && (
                     <Badge variant="outline" className="text-[10px]">
                       Aprobada

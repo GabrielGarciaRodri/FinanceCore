@@ -12,8 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ReconciliationDiscrepancyDto } from "@/lib/api/types";
+import type {
+  DiscrepancyType,
+  ReconciliationDiscrepancyDto,
+  ResolutionType,
+} from "@/lib/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
+import { discrepancyTypeLabel, resolutionTypeLabel } from "@/lib/i18n/labels";
 import { ResolveDiscrepancyDialog } from "./resolve-discrepancy-dialog";
 
 interface Props {
@@ -59,7 +64,7 @@ export function DiscrepanciesTable({
               <TableRow key={d.id}>
                 <TableCell>
                   <Badge variant="outline" className="font-normal">
-                    {d.discrepancyType}
+                    {discrepancyTypeLabel(d.discrepancyType as DiscrepancyType)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-xs tabular-nums text-muted-foreground">
@@ -89,7 +94,11 @@ export function DiscrepanciesTable({
                   {d.isResolved ? (
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-xs">{d.resolutionType ?? "Resuelta"}</span>
+                      <span className="text-xs">
+                        {d.resolutionType
+                          ? resolutionTypeLabel(d.resolutionType as ResolutionType)
+                          : "Resuelta"}
+                      </span>
                     </div>
                   ) : d.resolutionType ? (
                     // Resolución no terminal (UnderInvestigation / Escalated):
@@ -97,7 +106,9 @@ export function DiscrepanciesTable({
                     // explícitamente para no confundir con "Pendiente" puro.
                     <div className="flex items-center gap-1.5">
                       <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                      <span className="text-xs">{d.resolutionType}</span>
+                      <span className="text-xs">
+                        {resolutionTypeLabel(d.resolutionType as ResolutionType)}
+                      </span>
                     </div>
                   ) : (
                     <Badge variant="warning" className="font-normal">Pendiente</Badge>

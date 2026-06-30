@@ -17,6 +17,7 @@ import type {
   ReconciliationStatus,
 } from "@/lib/api/types";
 import { formatDate, formatMoney } from "@/lib/format";
+import { reconciliationStatusLabel } from "@/lib/i18n/labels";
 
 interface Props {
   data: PagedReconciliationsDto | undefined;
@@ -46,8 +47,8 @@ export function ReconciliationsTable({
             <TableHead className="w-[110px]">Fecha</TableHead>
             <TableHead>Cuenta</TableHead>
             <TableHead className="w-[180px]">Estado</TableHead>
-            <TableHead className="w-[120px] text-right">Matched</TableHead>
-            <TableHead className="w-[120px] text-right">Unmatched</TableHead>
+            <TableHead className="w-[120px] text-right">Conciliados</TableHead>
+            <TableHead className="w-[120px] text-right">Sin conciliar</TableHead>
             <TableHead className="w-[160px] text-right">Discrepancia</TableHead>
             <TableHead className="w-[60px] text-center">Aprob.</TableHead>
           </TableRow>
@@ -94,7 +95,7 @@ export function ReconciliationsTable({
                       variant={statusBadgeVariant(r.status as ReconciliationStatus)}
                       className="font-normal"
                     >
-                      {r.status}
+                      {reconciliationStatusLabel(r.status as ReconciliationStatus)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-sm">

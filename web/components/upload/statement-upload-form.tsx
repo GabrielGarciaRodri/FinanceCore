@@ -22,7 +22,9 @@ import {
   uploadsApi,
   type StatementUploadResponse,
 } from "@/lib/api/uploads";
+import type { ReconciliationStatus } from "@/lib/api/types";
 import { fromIsoDate, toIsoDate } from "@/lib/format";
+import { reconciliationStatusLabel } from "@/lib/i18n/labels";
 import { cn } from "@/lib/utils";
 import { FileDropzone } from "./file-dropzone";
 
@@ -191,15 +193,15 @@ function StatementResultSummary({
         <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
         <h3 className="text-sm font-medium">Reconciliación completada</h3>
         <span className="ml-auto text-xs text-muted-foreground">
-          Estado: <span className="font-medium">{result.status}</span>
+          Estado: <span className="font-medium">{reconciliationStatusLabel(result.status as ReconciliationStatus)}</span>
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Líneas leídas" value={result.linesParsed} />
-        <Stat label="Matched" value={result.matched} tone={result.matched > 0 ? "good" : undefined} />
+        <Stat label="Conciliados" value={result.matched} tone={result.matched > 0 ? "good" : undefined} />
         <Stat
-          label="Unmatched"
+          label="Sin conciliar"
           value={totalUnmatched}
           tone={totalUnmatched > 0 ? "warn" : undefined}
         />

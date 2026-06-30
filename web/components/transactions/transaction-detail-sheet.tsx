@@ -15,8 +15,13 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { transactionsApi } from "@/lib/api/transactions";
-import type { TransactionDetailDto } from "@/lib/api/types";
+import type {
+  TransactionDetailDto,
+  TransactionStatus,
+  TransactionType,
+} from "@/lib/api/types";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { transactionStatusLabel, transactionTypeLabel } from "@/lib/i18n/labels";
 
 interface Props {
   transactionId: string | null;
@@ -62,8 +67,8 @@ function DetailBody({ tx }: { tx: TransactionDetailDto }): JSX.Element {
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <Badge variant="outline">{tx.type}</Badge>
-          <Badge variant="outline">{tx.status}</Badge>
+          <Badge variant="outline">{transactionTypeLabel(tx.type as TransactionType)}</Badge>
+          <Badge variant="outline">{transactionStatusLabel(tx.status as TransactionStatus)}</Badge>
         </div>
         <div className="text-2xl font-semibold tabular-nums">
           {formatMoney(tx.amount, tx.currencyCode)}

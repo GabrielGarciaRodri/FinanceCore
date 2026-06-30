@@ -21,6 +21,7 @@ import type {
   ReconciliationStatus,
 } from "@/lib/api/types";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { reconciliationStatusLabel } from "@/lib/i18n/labels";
 
 export default function ReconciliationDetailPage(): JSX.Element {
   const params = useParams<{ id: string }>();
@@ -58,9 +59,9 @@ export default function ReconciliationDetailPage(): JSX.Element {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
-      toast.success("Export listo");
+      toast.success("Exportación lista");
     } catch (err) {
-      toast.error(`Error en export: ${(err as Error).message}`);
+      toast.error(`Error al exportar: ${(err as Error).message}`);
     } finally {
       setExporting(false);
     }
@@ -129,7 +130,7 @@ function DetailBody({
               Reconciliación · {formatDate(rec.reconciliationDate)}
             </h1>
             <Badge variant={statusBadgeVariant(rec.status as ReconciliationStatus)}>
-              {rec.status}
+              {reconciliationStatusLabel(rec.status as ReconciliationStatus)}
             </Badge>
             {approved && (
               <Badge variant="success" className="gap-1">
@@ -153,7 +154,7 @@ function DetailBody({
             ) : (
               <Download className="h-4 w-4" />
             )}
-            Export discrepancias CSV
+            Exportar discrepancias CSV
           </Button>
           {canWrite && (
             <Button
@@ -175,11 +176,11 @@ function DetailBody({
         <Stat label="Registros internos" value={rec.totalInternalRecords.toString()} />
         <Stat label="Registros externos" value={rec.totalExternalRecords.toString()} />
         <Stat
-          label="Matched"
+          label="Conciliados"
           value={`${rec.matchedCount} / ${rec.totalInternalRecords}`}
         />
         <Stat
-          label="Unmatched"
+          label="Sin conciliar"
           value={(rec.unmatchedInternal + rec.unmatchedExternal).toString()}
           highlight={rec.unmatchedInternal + rec.unmatchedExternal > 0 ? "warn" : undefined}
         />

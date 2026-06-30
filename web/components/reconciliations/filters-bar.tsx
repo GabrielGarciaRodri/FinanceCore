@@ -20,6 +20,7 @@ import {
 import { accountsApi } from "@/lib/api/accounts";
 import type { ReconciliationStatus } from "@/lib/api/types";
 import { fromIsoDate, toIsoDate } from "@/lib/format";
+import { reconciliationStatusLabel } from "@/lib/i18n/labels";
 import {
   useReconciliationFilters,
   type ReconciliationFilters,
@@ -91,7 +92,7 @@ export function FiltersBar(): JSX.Element {
               <SelectItem value={ALL_VALUE}>Todos</SelectItem>
               {STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s}
+                  {reconciliationStatusLabel(s)}
                 </SelectItem>
               ))}
             </SelectContent>

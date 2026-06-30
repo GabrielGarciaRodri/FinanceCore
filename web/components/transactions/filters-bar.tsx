@@ -25,6 +25,7 @@ import type {
   TransactionType,
 } from "@/lib/api/types";
 import { fromIsoDate, toIsoDate } from "@/lib/format";
+import { transactionStatusLabel, transactionTypeLabel } from "@/lib/i18n/labels";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import {
   useTransactionFilters,
@@ -139,7 +140,7 @@ export function FiltersBar(): JSX.Element {
               <SelectItem value={ALL_VALUE}>Todos</SelectItem>
               {TRANSACTION_TYPES.map((t) => (
                 <SelectItem key={t} value={t}>
-                  {t}
+                  {transactionTypeLabel(t)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -165,7 +166,7 @@ export function FiltersBar(): JSX.Element {
               <SelectItem value={ALL_VALUE}>Todos</SelectItem>
               {TRANSACTION_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s}
+                  {transactionStatusLabel(s)}
                 </SelectItem>
               ))}
             </SelectContent>
