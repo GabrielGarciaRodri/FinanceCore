@@ -9,6 +9,13 @@ const POLL_INTERVAL_MS = 3_000;
 const ATTEMPT_TIMEOUT_MS = 8_000;
 const SPLASH_DELAY_MS = 1_500;
 const STALLED_AFTER_MS = 90_000;
+// Un fallo más rápido que esto no es un cold start (esos mueren por timeout):
+// es el cliente bloqueando el request (adblock → ERR_BLOCKED_BY_CLIENT, CORS,
+// DNS). Tras varios seguidos el gate falla-abierto: es azúcar de UX, nunca
+// puede ser un muro que deje la app colgada con la API sana.
+const FAST_FAIL_MS = 1_500;
+const MAX_FAST_FAILS = 3;
+const MAX_WAIT_MS = 150_000;
 
 // El free tier de Render duerme la API tras inactividad (~60s de arranque).
 // Una vez despierta, no vuelve a dormirse durante la sesión SPA: recordarlo
@@ -48,14 +55,46 @@ export function ApiWakeGate({ children }: { children: ReactNode }): JSX.Element 
     const stalledTimer = setTimeout(() => setStalled(true), STALLED_AFTER_MS);
 
     async function poll(): Promise<void> {
+      const startedAt = Date.now();
+      let fastFails = 0;
+
+      function open(reason?: string): void {
+        if (cancelled) return;
+        if (reason) {
+          console.warn(`[ApiWakeGate] fail-open: ${reason}`);
+        }
+        apiAwake = true;
+        setAwake(true);
+      }
+
       while (!cancelled) {
+        const attemptStart = Date.now();
         if (await pingHealth()) {
-          if (!cancelled) {
-            apiAwake = true;
-            setAwake(true);
-          }
+          open();
           return;
         }
+
+        // Fallo rápido = el request nunca llegó a la API (adblock/CORS/DNS);
+        // un cold start real muere por timeout (~ATTEMPT_TIMEOUT_MS).
+        if (Date.now() - attemptStart < FAST_FAIL_MS) {
+          fastFails += 1;
+          if (fastFails >= MAX_FAST_FAILS) {
+            open(
+              "el ping a /health falla instantáneamente (¿adblock bloqueando " +
+                "el dominio o CORS?); la app sigue y los errores reales los " +
+                "muestran las llamadas normales"
+            );
+            return;
+          }
+        } else {
+          fastFails = 0;
+        }
+
+        if (Date.now() - startedAt > MAX_WAIT_MS) {
+          open("se agotó la espera máxima del cold start");
+          return;
+        }
+
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       }
     }
@@ -88,8 +127,9 @@ export function ApiWakeGate({ children }: { children: ReactNode }): JSX.Element 
         </p>
         {stalled && (
           <p className="max-w-xs pt-2 text-xs text-destructive">
-            Esto está tardando más de lo normal. El servicio puede estar caído
-            — podés seguir esperando o recargar la página.
+            Esto está tardando más de lo normal. Si usás un bloqueador de
+            anuncios, permití este dominio y el de la API; si no, el servicio
+            puede estar caído — podés seguir esperando o recargar.
           </p>
         )}
       </div>
