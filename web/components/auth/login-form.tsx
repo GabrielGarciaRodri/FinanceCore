@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { LogoMark } from "@/components/layout/logo-mark";
 import { useAuth } from "@/lib/auth/context";
+import { demoCredentials, demoMode } from "@/lib/demo";
 
 const schema = z.object({
   email: z.string().email("Email inválido."),
@@ -36,7 +37,11 @@ export function LoginForm(): JSX.Element {
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "" },
+    // En demo mode las credenciales van precargadas: el visitante entra con
+    // un click sin tener que copiar nada.
+    defaultValues: demoMode
+      ? { ...demoCredentials }
+      : { email: "", password: "" },
   });
 
   async function onSubmit(values: LoginValues): Promise<void> {
@@ -67,6 +72,16 @@ export function LoginForm(): JSX.Element {
         <CardDescription>Ingresá con tus credenciales.</CardDescription>
       </CardHeader>
       <CardContent>
+        {demoMode && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-medium">Demo pública — usuario de sólo lectura.</p>
+            <p className="mt-1">
+              Credenciales precargadas:{" "}
+              <span className="font-mono">{demoCredentials.email}</span> /{" "}
+              <span className="font-mono">{demoCredentials.password}</span>
+            </p>
+          </div>
+        )}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
