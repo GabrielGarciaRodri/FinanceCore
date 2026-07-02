@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AuthProvider } from "@/lib/auth/context";
+import { ApiWakeGate } from "@/components/layout/api-wake-gate";
 
 export function Providers({ children }: { children: ReactNode }): JSX.Element {
   const [queryClient] = useState(
@@ -28,7 +29,9 @@ export function Providers({ children }: { children: ReactNode }): JSX.Element {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>{children}</AuthProvider>
+      <ApiWakeGate>
+        <AuthProvider>{children}</AuthProvider>
+      </ApiWakeGate>
       {process.env.NODE_ENV === "development" && (
         <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
       )}

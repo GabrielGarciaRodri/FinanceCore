@@ -7,7 +7,8 @@ import axios, {
 import { tokenStorage } from "@/lib/auth/storage";
 import type { AuthTokenResponse } from "./types";
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+export const apiBaseUrl =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
 /**
  * Axios singleton. Toda llamada al backend pasa por este cliente.
@@ -17,7 +18,7 @@ const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
  *   desde el AuthProvider).
  */
 export const apiClient: AxiosInstance = axios.create({
-  baseURL,
+  baseURL: apiBaseUrl,
   withCredentials: false,
   headers: { "Content-Type": "application/json" },
   timeout: 30_000,
