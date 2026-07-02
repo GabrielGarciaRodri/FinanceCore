@@ -28,6 +28,7 @@ using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 using FinanceCore.Infrastructure.ExchangeRates;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -300,6 +301,84 @@ try
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // Rate limiting — global por IP + política estricta para /api/auth/*
+    // ─────────────────────────────────────────────────────────────────────────────
+    var rateLimiting = configuration
+        .GetSection(FinanceCore.API.RateLimiting.RateLimitingOptions.SectionName)
+        .Get<FinanceCore.API.RateLimiting.RateLimitingOptions>() ?? new();
+
+    // Render/Vercel: la API corre detrás de un proxy. Sin forwarded headers,
+    // RemoteIpAddress es siempre la IP del proxy y el limiter por IP colapsa
+    // en un bucket único para todos los visitantes.
+    services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders =
+            Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor |
+            Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+        // PaaS: la IP del proxy no se conoce de antemano.
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+
+    if (rateLimiting.Enabled)
+    {
+        static string ClientIp(HttpContext ctx) =>
+            ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        services.AddRateLimiter(limiter =>
+        {
+            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiter.OnRejected = async (context, ct) =>
+            {
+                if (context.Lease.TryGetMetadata(
+                        System.Threading.RateLimiting.MetadataName.RetryAfter, out var retryAfter))
+                {
+                    context.HttpContext.Response.Headers.RetryAfter =
+                        ((int)retryAfter.TotalSeconds).ToString();
+                }
+
+                await context.HttpContext.Response.WriteAsJsonAsync(new ProblemDetails
+                {
+                    Title = "Demasiadas solicitudes",
+                    Status = StatusCodes.Status429TooManyRequests,
+                    Detail = "Se superó el límite de solicitudes. Intentá de nuevo en unos segundos."
+                }, ct);
+            };
+
+            limiter.GlobalLimiter =
+                System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                {
+                    // /health y /metrics exentos: probes de Render + Prometheus.
+                    if (ctx.Request.Path.StartsWithSegments("/health") ||
+                        ctx.Request.Path.StartsWithSegments("/metrics"))
+                    {
+                        return System.Threading.RateLimiting.RateLimitPartition
+                            .GetNoLimiter("exempt");
+                    }
+
+                    return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                        ClientIp(ctx),
+                        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = rateLimiting.GlobalPermitLimit,
+                            Window = TimeSpan.FromSeconds(rateLimiting.GlobalWindowSeconds),
+                            QueueLimit = 0
+                        });
+                });
+
+            limiter.AddPolicy("auth", ctx =>
+                System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = rateLimiting.AuthPermitLimit,
+                        Window = TimeSpan.FromSeconds(rateLimiting.AuthWindowSeconds),
+                        QueueLimit = 0
+                    }));
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Swagger/OpenAPI
     // ─────────────────────────────────────────────────────────────────────────────
     services.AddEndpointsApiExplorer();
@@ -533,6 +612,11 @@ try
     // ═══════════════════════════════════════════════════════════════════════════
     var app = builder.Build();
 
+    // Primero en el pipeline: restaura la IP real del cliente desde
+    // X-Forwarded-For antes de que cualquier middleware (rate limiter,
+    // logging) la use.
+    app.UseForwardedHeaders();
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Middleware Pipeline
     // ─────────────────────────────────────────────────────────────────────────────
@@ -627,6 +711,10 @@ try
 
     app.UseHttpsRedirection();
     app.UseRouting();
+    if (rateLimiting.Enabled)
+    {
+        app.UseRateLimiter();
+    }
     app.UseAuthentication();
     app.UseAuthorization();
 

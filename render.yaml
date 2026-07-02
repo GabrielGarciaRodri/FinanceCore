@@ -48,3 +48,8 @@ services:
       # después y redeployar la API para que el CORS la permita.
       - key: Cors__AllowedOrigins__0
         sync: false
+      # El rate limiting va apagado en Development (dev local + E2E hacen
+      # ráfagas legítimas), pero la demo corre en Development por el seed:
+      # forzarlo acá — la env var pisa a appsettings.Development.json.
+      - key: RateLimiting__Enabled
+        value: "true"

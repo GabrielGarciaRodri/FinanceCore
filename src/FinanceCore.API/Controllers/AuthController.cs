@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using FinanceCore.Infrastructure.Identity;
 
 namespace FinanceCore.API.Controllers;
@@ -11,6 +12,8 @@ namespace FinanceCore.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+// Política estricta: login/refresh sin throttling invita a fuerza bruta.
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly SignInManager<ApplicationUser> _signInManager;
