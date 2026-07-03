@@ -4,9 +4,36 @@ import { Toaster } from "@/components/ui/sonner";
 import { DemoBanner } from "@/components/layout/demo-banner";
 import "./globals.css";
 
+// Base para URLs absolutas de OG images. En Vercel, setear NEXT_PUBLIC_SITE_URL
+// con el dominio público; VERCEL_URL cubre los deploys de preview.
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+const description =
+  "Sistema de conciliación financiera multi-cuenta y multi-moneda: ingesta de " +
+  "transacciones, matching con tolerancias configurables y cierre diario. " +
+  "Demo pública con usuario de sólo lectura.";
+
 export const metadata: Metadata = {
-  title: "FinanceCore",
-  description: "FinanceCore — financial reconciliation and analysis.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "FinanceCore — Conciliación financiera",
+    template: "%s · FinanceCore",
+  },
+  description,
+  openGraph: {
+    type: "website",
+    siteName: "FinanceCore",
+    title: "FinanceCore — Conciliación financiera multi-cuenta",
+    description,
+    locale: "es",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FinanceCore — Conciliación financiera multi-cuenta",
+    description,
+  },
 };
 
 export default function RootLayout({
