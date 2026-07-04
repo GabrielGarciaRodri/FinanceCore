@@ -73,7 +73,7 @@ export function LoginForm(): JSX.Element {
       </CardHeader>
       <CardContent>
         {demoMode && (
-          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/50 dark:text-amber-200">
             <p className="font-medium">Demo pública — usuario de sólo lectura.</p>
             <p className="mt-1">
               Credenciales precargadas:{" "}

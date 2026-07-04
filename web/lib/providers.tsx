@@ -3,8 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/lib/auth/context";
-import { ApiWakeGate } from "@/components/layout/api-wake-gate";
 
 export function Providers({ children }: { children: ReactNode }): JSX.Element {
   const [queryClient] = useState(
@@ -29,9 +29,17 @@ export function Providers({ children }: { children: ReactNode }): JSX.Element {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ApiWakeGate>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        {/* El ApiWakeGate ya no va acá: la landing pública (/) debe renderizar
+            sin esperar a la API. El gate vive en el layout de (app) y en el
+            login, que son los que realmente la necesitan despierta. */}
         <AuthProvider>{children}</AuthProvider>
-      </ApiWakeGate>
+      </ThemeProvider>
       {process.env.NODE_ENV === "development" && (
         <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
       )}

@@ -99,7 +99,9 @@ export function ActivityChart({ data }: ActivityChartProps): JSX.Element {
                   border: "1px solid hsl(var(--border))",
                   borderRadius: 6,
                   fontSize: 12,
+                  color: "hsl(var(--popover-foreground))",
                 }}
+                labelStyle={{ color: "hsl(var(--popover-foreground))" }}
                 formatter={(value: number) =>
                   value.toLocaleString(undefined, { maximumFractionDigits: 2 })
                 }
