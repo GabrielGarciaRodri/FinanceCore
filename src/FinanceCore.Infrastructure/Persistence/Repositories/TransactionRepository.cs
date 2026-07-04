@@ -126,6 +126,18 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Transactions
+            .AsNoTracking()
+            .Where(t => t.Category != null && t.Category != "")
+            .Select(t => t.Category!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Transaction>> GetPendingTransactionsAsync(
         int limit = 100,
         CancellationToken cancellationToken = default)

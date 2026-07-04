@@ -322,6 +322,20 @@ public class TransactionsController : ControllerBase
     }
 
     /// <summary>
+    /// Categorías distintas presentes en las transacciones. Alimenta el
+    /// Select del filtro por categoría en la UI (el match es exacto).
+    /// </summary>
+    [HttpGet("categories")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetCategories(
+        [FromServices] FinanceCore.Domain.Repositories.ITransactionRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var categories = await repository.GetDistinctCategoriesAsync(cancellationToken);
+        return Ok(categories);
+    }
+
+    /// <summary>
     /// Exporta transacciones a CSV (streaming).
     /// </summary>
     [HttpGet("export.csv")]

@@ -89,6 +89,13 @@ public interface ITransactionRepository : IRepository<Transaction>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Categorías distintas presentes en las transacciones (para el filtro de
+    /// la UI; el filtro por categoría es igualdad exacta).
+    /// </summary>
+    Task<IReadOnlyList<string>> GetDistinctCategoriesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Obtiene transacciones pendientes de procesar.
     /// </summary>
     Task<IReadOnlyList<Transaction>> GetPendingTransactionsAsync(

@@ -33,6 +33,12 @@ export const transactionsApi = {
     return data;
   },
 
+  /** Categorías distintas presentes en los datos (alimenta el filtro). */
+  async categories(): Promise<string[]> {
+    const { data } = await apiClient.get<string[]>("/api/transactions/categories");
+    return data;
+  },
+
   /**
    * Descarga export como Blob (necesario para incluir el Authorization header;
    * un <a download> sólo no manda headers).

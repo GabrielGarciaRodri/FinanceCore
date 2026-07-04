@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { accountsApi } from "@/lib/api/accounts";
+import { transactionsApi } from "@/lib/api/transactions";
 import type {
   TransactionStatus,
   TransactionType,
@@ -61,6 +62,7 @@ function hasAnyFilter(f: TransactionFilters): boolean {
       f.endDate ||
       f.type ||
       f.status ||
+      f.category ||
       f.minAmount !== undefined ||
       f.maxAmount !== undefined ||
       f.searchText,
@@ -73,6 +75,12 @@ export function FiltersBar(): JSX.Element {
   const { data: accounts } = useQuery({
     queryKey: ["accounts", { activeOnly: true }],
     queryFn: () => accountsApi.list(false),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: categories } = useQuery({
+    queryKey: ["transaction-categories"],
+    queryFn: () => transactionsApi.categories(),
     staleTime: 5 * 60_000,
   });
 
@@ -172,6 +180,31 @@ export function FiltersBar(): JSX.Element {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Categoría (sólo si hay categorías en los datos; match exacto) */}
+        {categories && categories.length > 0 && (
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Categoría</Label>
+            <Select
+              value={filters.category ?? ALL_VALUE}
+              onValueChange={(v) =>
+                setFilter("category", v === ALL_VALUE ? undefined : v)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Todas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VALUE}>Todas</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Desde */}
         <DatePickerField
