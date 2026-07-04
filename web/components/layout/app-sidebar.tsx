@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { FeedbackLinks } from "@/components/layout/feedback-links";
 import { LogoMark } from "@/components/layout/logo-mark";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { useAuth } from "@/lib/auth/context";
@@ -40,8 +41,9 @@ export function AppSidebar(): JSX.Element {
           );
         })}
       </nav>
-      <div className="border-t p-3 text-xs text-muted-foreground">
-        v0.1 — fase F
+      <div className="space-y-2 border-t p-3">
+        <FeedbackLinks />
+        <div className="text-xs text-muted-foreground">v0.1 — fase F</div>
       </div>
     </aside>
   );

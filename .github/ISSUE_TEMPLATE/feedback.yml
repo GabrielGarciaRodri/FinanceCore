@@ -1,0 +1,34 @@
+name: 💬 Feedback de la demo
+description: Feedback sobre la demo pública de FinanceCore — bugs, confusiones, ideas.
+title: "[Feedback] "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ¡Gracias por probar la demo! Un par de preguntas rápidas — respondé sólo lo que aplique.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: ¿Qué probaste y qué pasó?
+      description: Si fue un bug, incluí en qué página estabas.
+      placeholder: Subí un extracto y esperaba X, pero vi Y…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: ¿Qué esperabas que pasara?
+    validations:
+      required: false
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Tipo de feedback
+      options:
+        - Bug
+        - UX confusa
+        - Idea / feature
+        - Otro
+    validations:
+      required: false

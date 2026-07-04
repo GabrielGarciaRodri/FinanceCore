@@ -10,6 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { FeedbackLinks } from "@/components/layout/feedback-links";
 import { LogoMark } from "@/components/layout/logo-mark";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { useAuth } from "@/lib/auth/context";
@@ -62,6 +63,9 @@ export function MobileNav(): JSX.Element {
             );
           })}
         </nav>
+        <div className="border-t p-3">
+          <FeedbackLinks />
+        </div>
       </SheetContent>
     </Sheet>
   );

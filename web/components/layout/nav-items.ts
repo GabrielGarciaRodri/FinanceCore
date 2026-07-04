@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { LayoutDashboard, Receipt, ScrollText, Upload } from "lucide-react";
+import { LayoutDashboard, Receipt, ScrollText, Upload, Wallet } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -12,6 +12,7 @@ export interface NavItem {
 /** Navegación principal, compartida por el sidebar (desktop) y la nav móvil. */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/accounts", label: "Cuentas", icon: Wallet },
   { href: "/transactions", label: "Transacciones", icon: Receipt },
   { href: "/reconciliations", label: "Reconciliaciones", icon: ScrollText },
   { href: "/upload", label: "Cargar archivos", icon: Upload, writeOnly: true },
