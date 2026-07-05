@@ -108,4 +108,5 @@ public class ReconciliationRepository : IReconciliationRepository
 
     public void Add(Reconciliation reconciliation) => _context.Reconciliations.Add(reconciliation);
     public void Update(Reconciliation reconciliation) => _context.Reconciliations.Update(reconciliation);
+    public void Remove(Reconciliation reconciliation) => _context.Reconciliations.Remove(reconciliation);
 }

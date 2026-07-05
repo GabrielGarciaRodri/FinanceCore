@@ -297,6 +297,7 @@ public interface IReconciliationRepository
 
     void Add(Reconciliation reconciliation);
     void Update(Reconciliation reconciliation);
+    void Remove(Reconciliation reconciliation);
 }
 
 /// <summary>

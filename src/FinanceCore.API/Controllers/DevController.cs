@@ -28,10 +28,14 @@ public class DevController : ControllerBase
     /// <summary>
     /// Genera datos de demo con sabor de conciliación de pasarelas (Wompi/PayU/
     /// MercadoPago/ePayco/Addi) sobre la cuenta seed: liquidaciones, comisiones,
-    /// retenciones y contracargos, repartidos en varias reconciliaciones con mix
-    /// de estados (pendiente / parcialmente resuelta / aprobada) y discrepancias
-    /// realistas (liquidación T+1, referencia de pasarela, contracargo bank-only,
-    /// dispersión pendiente). Sólo disponible en entorno Development.
+    /// retenciones, devoluciones, GMF y contracargos, repartidos en varias
+    /// reconciliaciones con mix de estados (pendiente / parcialmente resuelta /
+    /// aprobada) y discrepancias realistas (liquidación T+1, referencia de
+    /// pasarela, contracargo bank-only, dispersión pendiente). Toda transacción
+    /// queda categorizada (Liquidación pasarela, Comisiones, Impuestos y
+    /// retenciones, Devoluciones, Fees bancarios, Ajustes) para que el filtro
+    /// por categoría de /transactions tenga contenido real.
+    /// Sólo disponible en entorno Development.
     /// </summary>
     [HttpPost("seed-reconciliations-demo")]
     [ProducesResponseType(typeof(SeedReconciliationsResponse), StatusCodes.Status200OK)]
@@ -86,12 +90,40 @@ public class DevController : ControllerBase
         {
             var date = dates[i];
 
+            // 0. El engine devuelve la reconciliación existente sin procesar el
+            //    extracto cuando la fecha ya tiene una en estado Completed — p.ej.
+            //    la BalanceOnly vacía que deja el cierre diario de Hangfire. Si es
+            //    ese artefacto vacío (0 externas, 0 matcheadas), lo removemos y
+            //    re-seedeamos la fecha; si es una reconciliación con contenido,
+            //    salteamos la fecha y la reportamos en la respuesta.
+            var existingRec = await unitOfWork.Reconciliations
+                .GetByAccountAndDateAsync(account.Id, date, cancellationToken);
+            if (existingRec is not null && existingRec.Status == ReconciliationStatus.Completed)
+            {
+                var isEmptyBalanceArtifact =
+                    existingRec.TotalExternalRecords == 0 && existingRec.MatchedCount == 0;
+                if (!isEmptyBalanceArtifact)
+                {
+                    summary.SkippedDates.Add(date);
+                    continue;
+                }
+
+                unitOfWork.Reconciliations.Remove(existingRec);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             // 1. Generar liquidaciones de pasarela + costos (créditos > débitos →
             //    el balance de la cuenta corriente no queda negativo).
             var txns = GenerateInternalTransactions(account, date, runId, batchIndex: i);
             foreach (var tx in txns)
             {
-                account.ApplyTransaction(tx);
+                // Ciclo de vida completo hasta Posted: el engine sólo matchea
+                // transacciones Posted/Reconciled. El TransactionPostedEventHandler
+                // aplica el balance a la cuenta post-commit, por eso acá ya no se
+                // llama a account.ApplyTransaction.
+                tx.StartProcessing();
+                tx.MarkAsValidated();
+                tx.Post();
                 unitOfWork.Transactions.Add(tx);
             }
             await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -127,10 +159,11 @@ public class DevController : ControllerBase
 
     /// <summary>
     /// Genera las transacciones internas de un batch con sabor de pasarelas:
-    /// liquidaciones (créditos, montos variados) + comisiones/retenciones (débitos,
-    /// como % de las liquidaciones). Devuelve créditos antes que débitos para que
-    /// el balance de la cuenta corriente nunca quede negativo (los costos son una
-    /// fracción de lo acreditado).
+    /// liquidaciones (créditos, montos variados) + comisiones/retenciones/
+    /// devoluciones/GMF/ajustes (débitos, como % o fracción de las liquidaciones).
+    /// Cada transacción se categoriza al crearse. Devuelve créditos antes que
+    /// débitos para que el balance de la cuenta corriente nunca quede negativo
+    /// (los costos son una fracción de lo acreditado).
     /// </summary>
     private static List<Transaction> GenerateInternalTransactions(
         Account account,
@@ -152,7 +185,7 @@ public class DevController : ControllerBase
             var sales = rng.Next(18, 260);
             var amount = rng.Next(350, 4800) * 1000m;
             settlementAmounts.Add(amount);
-            credits.Add(Transaction.CreateCredit(
+            var settlement = Transaction.CreateCredit(
                 externalId: $"demo-{runId}-{date:yyyyMMdd}-liq{i}",
                 source: SeederTag,
                 accountId: account.Id,
@@ -160,27 +193,29 @@ public class DevController : ControllerBase
                 currencyCode: currency,
                 valueDate: date,
                 bookingDate: date,
-                description: $"Liquidación {gw} · {sales} ventas"));
+                description: $"Liquidación {gw} · {sales} ventas");
+            settlement.Categorize("Liquidación pasarela", gw);
+            credits.Add(settlement);
         }
 
         // Costos (débitos) como % de las liquidaciones → siempre < total acreditado.
-        var feeKinds = new (string Label, decimal Rate)[]
+        var feeKinds = new (string Label, decimal Rate, string Category)[]
         {
-            ("Comisión {0} (2,99% + IVA)", 0.0299m),
-            ("Retención en la fuente", 0.0150m),
-            ("Retención ICA", 0.0110m),
-            ("Comisión pasarela {0}", 0.0265m),
-            ("IVA sobre comisión", 0.0057m),
+            ("Comisión {0} (2,99% + IVA)", 0.0299m, "Comisiones"),
+            ("Retención en la fuente", 0.0150m, "Impuestos y retenciones"),
+            ("Retención ICA", 0.0110m, "Impuestos y retenciones"),
+            ("Comisión pasarela {0}", 0.0265m, "Comisiones"),
+            ("IVA sobre comisión", 0.0057m, "Impuestos y retenciones"),
         };
         var debits = new List<Transaction>();
         var feeCount = 4 + (batchIndex % 2);
         for (var i = 0; i < feeCount; i++)
         {
             var gw = gateways[rng.Next(gateways.Length)];
-            var (label, rate) = feeKinds[i % feeKinds.Length];
+            var (label, rate, category) = feeKinds[i % feeKinds.Length];
             var basis = settlementAmounts[i % settlementAmounts.Count];
             var amount = Math.Max(1000m, Math.Round(basis * rate / 1000m) * 1000m);
-            debits.Add(Transaction.CreateDebit(
+            var fee = Transaction.CreateDebit(
                 externalId: $"demo-{runId}-{date:yyyyMMdd}-fee{i}",
                 source: SeederTag,
                 accountId: account.Id,
@@ -188,7 +223,58 @@ public class DevController : ControllerBase
                 currencyCode: currency,
                 valueDate: date,
                 bookingDate: date,
-                description: string.Format(label, gw)));
+                description: string.Format(label, gw));
+            fee.Categorize(category);
+            debits.Add(fee);
+        }
+
+        // Devoluciones a clientes: montos chicos (una fracción de lo liquidado)
+        // para que el total debitado siga muy por debajo de lo acreditado.
+        var refundCount = 1 + (batchIndex % 2);
+        for (var i = 0; i < refundCount; i++)
+        {
+            var gw = gateways[rng.Next(gateways.Length)];
+            var order = rng.Next(40000, 99999);
+            var refund = Transaction.CreateDebit(
+                externalId: $"demo-{runId}-{date:yyyyMMdd}-ref{i}",
+                source: SeederTag,
+                accountId: account.Id,
+                amount: rng.Next(45, 320) * 1000m,
+                currencyCode: currency,
+                valueDate: date,
+                bookingDate: date,
+                description: $"Devolución {gw} · pedido #{order}");
+            refund.Categorize("Devoluciones", gw);
+            debits.Add(refund);
+        }
+
+        // GMF 4x1000 sobre lo liquidado en el día.
+        var gmf = Transaction.CreateDebit(
+            externalId: $"demo-{runId}-{date:yyyyMMdd}-gmf",
+            source: SeederTag,
+            accountId: account.Id,
+            amount: Math.Round(settlementAmounts.Sum() * 0.004m),
+            currencyCode: currency,
+            valueDate: date,
+            bookingDate: date,
+            description: "GMF 4x1000 sobre movimientos del día");
+        gmf.Categorize("Fees bancarios");
+        debits.Add(gmf);
+
+        // Ajuste chico batch por medio: monto no-millar, sabor operativo.
+        if (batchIndex % 2 == 1)
+        {
+            var adjustment = Transaction.CreateDebit(
+                externalId: $"demo-{runId}-{date:yyyyMMdd}-adj",
+                source: SeederTag,
+                accountId: account.Id,
+                amount: rng.Next(1200, 9800),
+                currencyCode: currency,
+                valueDate: date,
+                bookingDate: date,
+                description: "Ajuste por diferencia en dispersión");
+            adjustment.Categorize("Ajustes");
+            debits.Add(adjustment);
         }
 
         return credits.Concat(debits).ToList();
@@ -337,4 +423,10 @@ public class SeedReconciliationsResponse
     public int DiscrepanciesResolved { get; set; }
     public int ReconciliationsApproved { get; set; }
     public List<Guid> ReconciliationIds { get; set; } = new();
+
+    /// <summary>
+    /// Fechas salteadas porque ya tenían una reconciliación Completed con
+    /// contenido real (el seeder no pisa datos existentes).
+    /// </summary>
+    public List<DateOnly> SkippedDates { get; set; } = new();
 }
