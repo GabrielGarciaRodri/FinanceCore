@@ -9,8 +9,10 @@ import { BalanceCards } from "@/components/dashboard/balance-cards";
 import { QuickStats } from "@/components/dashboard/quick-stats";
 import { RecentReconciliations } from "@/components/dashboard/recent-reconciliations";
 import { dashboardApi } from "@/lib/api/dashboard";
+import { useAuth } from "@/lib/auth/context";
 
 export default function DashboardPage(): JSX.Element {
+  const { user } = useAuth();
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => dashboardApi.get(),
@@ -21,14 +23,17 @@ export default function DashboardPage(): JSX.Element {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Resumen general del sistema. Auto-refresh cada 60 segundos.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {greeting()}
+            {firstName(user?.displayName) ? `, ${firstName(user?.displayName)}` : ""}{" "}
+            <span aria-hidden>👋</span>
+          </h1>
+          <p className="text-sm text-muted-foreground">{todayLabel()}</p>
         </div>
         <Button
           variant="outline"
           size="sm"
+          title="Los datos se actualizan solos cada 60 segundos"
           onClick={() => void refetch()}
           disabled={isFetching}
         >
@@ -46,16 +51,24 @@ export default function DashboardPage(): JSX.Element {
         />
       ) : data ? (
         <div className="space-y-6">
-          <QuickStats stats={data.stats} />
+          <div className="motion-safe:animate-fade-in-up">
+            <QuickStats stats={data.stats} />
+          </div>
 
-          <section>
+          <section
+            className="motion-safe:animate-fade-in-up"
+            style={{ animationDelay: "80ms" }}
+          >
             <h2 className="mb-3 text-sm font-medium text-muted-foreground">
               Saldos por moneda
             </h2>
             <BalanceCards balances={data.balancesByCurrency} />
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div
+            className="grid gap-6 motion-safe:animate-fade-in-up lg:grid-cols-3"
+            style={{ animationDelay: "160ms" }}
+          >
             <div className="lg:col-span-2">
               <ActivityChart data={data.activity} />
             </div>
@@ -67,6 +80,27 @@ export default function DashboardPage(): JSX.Element {
       ) : null}
     </div>
   );
+}
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Buenos días";
+  if (hour < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+function firstName(displayName?: string | null): string | null {
+  const first = displayName?.trim().split(/\s+/)[0];
+  return first || null;
+}
+
+function todayLabel(): string {
+  const label = new Date().toLocaleDateString("es", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function DashboardSkeleton(): JSX.Element {

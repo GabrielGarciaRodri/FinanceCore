@@ -37,6 +37,12 @@
     /* Series de gráficos — semántica financiera: rose = débitos, emerald = créditos */
     --chart-debits: 347 60% 55%;
     --chart-credits: 160 60% 38%;
+
+    /* Acentos de las stat cards del dashboard */
+    --stat-accounts: 217 70% 50%;
+    --stat-transactions: 160 60% 38%;
+    --stat-discrepancies: 38 85% 45%;
+    --stat-reconciliations: 262 55% 55%;
   }
 
   .dark {
@@ -70,6 +76,11 @@
 
     --chart-debits: 347 65% 62%;
     --chart-credits: 160 55% 48%;
+
+    --stat-accounts: 217 75% 62%;
+    --stat-transactions: 160 55% 48%;
+    --stat-discrepancies: 38 90% 55%;
+    --stat-reconciliations: 262 65% 68%;
   }
 }
 

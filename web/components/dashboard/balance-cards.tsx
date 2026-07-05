@@ -32,7 +32,10 @@ export function BalanceCards({ balances }: BalanceCardsProps): JSX.Element {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {balances.map((b) => (
-        <Card key={b.currencyCode}>
+        <Card
+          key={b.currencyCode}
+          className="transition-all duration-200 motion-safe:hover:-translate-y-0.5 hover:shadow-md"
+        >
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center justify-between">
               <span>{b.currencyCode}</span>
