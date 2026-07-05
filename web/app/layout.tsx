@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "@/lib/providers";
 import { Toaster } from "@/components/ui/sonner";
 import { DemoBanner } from "@/components/layout/demo-banner";
@@ -49,6 +50,8 @@ export default function RootLayout({
         <DemoBanner />
         <Providers>{children}</Providers>
         <Toaster />
+        {/* Sólo emite en deployments de Vercel; en dev local es un no-op. */}
+        <Analytics />
       </body>
     </html>
   );
