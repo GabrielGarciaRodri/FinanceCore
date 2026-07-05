@@ -12,6 +12,13 @@ import { ReadOnlyNotice } from "@/components/auth/read-only-notice";
 import { useAuth } from "@/lib/auth/context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { accountsApi } from "@/lib/api/accounts";
@@ -172,38 +179,27 @@ function DetailBody({
 
       {!canWrite && <ReadOnlyNotice />}
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Registros internos" value={rec.totalInternalRecords.toString()} />
-        <Stat label="Registros externos" value={rec.totalExternalRecords.toString()} />
-        <Stat
-          label="Conciliados"
-          value={`${rec.matchedCount} / ${rec.totalInternalRecords}`}
-        />
-        <Stat
-          label="Sin conciliar"
-          value={(rec.unmatchedInternal + rec.unmatchedExternal).toString()}
-          highlight={rec.unmatchedInternal + rec.unmatchedExternal > 0 ? "warn" : undefined}
-        />
-        <Stat label="Total interno" value={formatMoney(rec.totalInternalAmount, "")} />
-        <Stat label="Total externo" value={formatMoney(rec.totalExternalAmount, "")} />
-        <Stat
-          label="Discrepancia"
-          value={formatMoney(Math.abs(rec.discrepancyAmount), "")}
-          highlight={rec.discrepancyAmount !== 0 ? "error" : undefined}
-        />
-        <Stat
-          label="Sin resolver"
-          value={unresolved.toString()}
-          highlight={unresolved > 0 ? "warn" : undefined}
-        />
+      <section className="grid gap-4 motion-safe:animate-fade-in-up lg:grid-cols-2">
+        <CoverageCard rec={rec} />
+        <BalancesCard rec={rec} />
       </section>
 
-      <Separator />
-
-      <section>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">
-          Discrepancias
-        </h2>
+      <section
+        className="motion-safe:animate-fade-in-up"
+        style={{ animationDelay: "80ms" }}
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Discrepancias
+          </h2>
+          {rec.discrepancies.length > 0 && (
+            <Badge variant={unresolved > 0 ? "warning" : "success"}>
+              {unresolved > 0
+                ? `${unresolved} sin resolver de ${rec.discrepancies.length}`
+                : `${rec.discrepancies.length} resueltas`}
+            </Badge>
+          )}
+        </div>
         <DiscrepanciesTable
           reconciliationId={rec.id}
           discrepancies={rec.discrepancies}
@@ -213,45 +209,168 @@ function DetailBody({
 
       <Separator />
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <Stat label="Procesada por" value={rec.processedBy} />
-        {rec.completedAt && (
-          <Stat label="Completada" value={formatDateTime(rec.completedAt)} />
-        )}
-        {rec.startedAt && (
-          <Stat label="Iniciada" value={formatDateTime(rec.startedAt)} />
-        )}
-        {rec.durationMs != null && (
-          <Stat label="Duración" value={`${(rec.durationMs / 1000).toFixed(2)}s`} />
-        )}
-        {rec.approvedBy && <Stat label="Aprobada por" value={rec.approvedBy} />}
-        {rec.notes && <Stat label="Notas" value={rec.notes} />}
+      <section
+        className="motion-safe:animate-fade-in-up"
+        style={{ animationDelay: "160ms" }}
+      >
+        <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <MetaItem label="Procesada por" value={rec.processedBy} />
+          {rec.startedAt && (
+            <MetaItem label="Iniciada" value={formatDateTime(rec.startedAt)} />
+          )}
+          {rec.completedAt && (
+            <MetaItem label="Completada" value={formatDateTime(rec.completedAt)} />
+          )}
+          {rec.durationMs != null && (
+            <MetaItem label="Duración" value={`${(rec.durationMs / 1000).toFixed(2)}s`} />
+          )}
+          {rec.approvedBy && <MetaItem label="Aprobada por" value={rec.approvedBy} />}
+          {rec.notes && <MetaItem label="Notas" value={rec.notes} />}
+        </dl>
       </section>
     </div>
   );
 }
 
-function Stat({
+const MATCHED_COLOR = "hsl(var(--chart-credits))";
+const UNMATCHED_INTERNAL_COLOR = "hsl(var(--stat-discrepancies))";
+const UNMATCHED_EXTERNAL_COLOR = "hsl(var(--chart-debits))";
+
+function CoverageCard({ rec }: { rec: ReconciliationDto }): JSX.Element {
+  const total = rec.totalInternalRecords;
+  const pct = total > 0 ? (rec.matchedCount / total) * 100 : 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">Cobertura de matcheo</CardTitle>
+            <CardDescription>
+              {rec.totalInternalRecords.toLocaleString()} registro
+              {rec.totalInternalRecords === 1 ? "" : "s"} interno
+              {rec.totalInternalRecords === 1 ? "" : "s"} ·{" "}
+              {rec.totalExternalRecords.toLocaleString()} del extracto
+            </CardDescription>
+          </div>
+          <span className="text-2xl font-semibold tabular-nums">
+            {pct.toLocaleString(undefined, { maximumFractionDigits: 0 })}%
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div
+          className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: MATCHED_COLOR }}
+          />
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <CoverageLegend
+            color={MATCHED_COLOR}
+            label="Conciliados"
+            value={rec.matchedCount}
+          />
+          <CoverageLegend
+            color={UNMATCHED_INTERNAL_COLOR}
+            label="Sin conciliar (interno)"
+            value={rec.unmatchedInternal}
+          />
+          <CoverageLegend
+            color={UNMATCHED_EXTERNAL_COLOR}
+            label="Sin conciliar (extracto)"
+            value={rec.unmatchedExternal}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CoverageLegend({
+  color,
   label,
   value,
-  highlight,
 }: {
+  color: string;
   label: string;
-  value: string;
-  highlight?: "warn" | "error";
+  value: number;
 }): JSX.Element {
-  const color =
-    highlight === "error"
-      ? "text-rose-600 dark:text-rose-400"
-      : highlight === "warn"
-      ? "text-amber-600 dark:text-amber-400"
-      : "";
   return (
-    <div className="rounded-md border bg-card p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-lg font-semibold tabular-nums ${color}`}>
-        {value}
-      </div>
+    <span className="flex items-center gap-1.5 text-muted-foreground">
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: color }}
+        aria-hidden
+      />
+      {label}:{" "}
+      <span className="font-medium text-foreground tabular-nums">
+        {value.toLocaleString()}
+      </span>
+    </span>
+  );
+}
+
+function BalancesCard({ rec }: { rec: ReconciliationDto }): JSX.Element {
+  const balanced = rec.discrepancyAmount === 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Balances</CardTitle>
+        <CardDescription>Total interno vs. extracto bancario</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-muted-foreground">Interno</div>
+            <div className="text-xl font-semibold tabular-nums">
+              {formatMoney(rec.totalInternalAmount, "")}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Extracto</div>
+            <div className="text-xl font-semibold tabular-nums">
+              {formatMoney(rec.totalExternalAmount, "")}
+            </div>
+          </div>
+        </div>
+        <Separator />
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Diferencia</span>
+          {balanced ? (
+            <span
+              className="flex items-center gap-1.5 font-medium"
+              style={{ color: MATCHED_COLOR }}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Sin diferencia
+            </span>
+          ) : (
+            <span
+              className="font-semibold tabular-nums"
+              style={{ color: UNMATCHED_EXTERNAL_COLOR }}
+            >
+              {formatMoney(Math.abs(rec.discrepancyAmount), "")}
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetaItem({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-foreground">{value}</dd>
     </div>
   );
 }
