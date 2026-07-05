@@ -33,6 +33,10 @@
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+
+    /* Series de gráficos — semántica financiera: rose = débitos, emerald = créditos */
+    --chart-debits: 347 60% 55%;
+    --chart-credits: 160 60% 38%;
   }
 
   .dark {
@@ -63,6 +67,9 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    --chart-debits: 347 65% 62%;
+    --chart-credits: 160 55% 48%;
   }
 }
 

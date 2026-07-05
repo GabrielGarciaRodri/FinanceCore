@@ -1,15 +1,15 @@
 "use client";
 
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { TooltipProps } from "recharts";
 import {
   Card,
   CardContent,
@@ -22,6 +22,9 @@ import type { ActivityPointDto } from "@/lib/api/types";
 interface ActivityChartProps {
   data: ActivityPointDto[];
 }
+
+const DEBITS_COLOR = "hsl(var(--chart-debits))";
+const CREDITS_COLOR = "hsl(var(--chart-credits))";
 
 export function ActivityChart({ data }: ActivityChartProps): JSX.Element {
   if (data.length === 0) {
@@ -40,9 +43,10 @@ export function ActivityChart({ data }: ActivityChartProps): JSX.Element {
 
   // Recharts trabaja mejor con números — formateamos la fecha como label corta.
   const chartData = data.map((d) => ({
-    date: d.date.slice(5),         // MM-DD
-    Débitos: Number(d.debits),
-    Créditos: Number(d.credits),
+    date: d.date.slice(5), // MM-DD
+    fullDate: d.date,
+    debits: Number(d.debits),
+    credits: Number(d.credits),
     count: d.count,
   }));
 
@@ -61,60 +65,152 @@ export function ActivityChart({ data }: ActivityChartProps): JSX.Element {
               {totalCount.toLocaleString()} transacciones
             </CardDescription>
           </div>
+          {/* Los totales hacen de leyenda: dot de color + label + monto */}
           <div className="flex gap-4 text-xs">
-            <span className="text-muted-foreground">
-              Débitos:{" "}
-              <span className="font-medium text-foreground tabular-nums">
-                {totalDebits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </span>
-            </span>
-            <span className="text-muted-foreground">
-              Créditos:{" "}
-              <span className="font-medium text-foreground tabular-nums">
-                {totalCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </span>
-            </span>
+            <LegendTotal label="Débitos" color={DEBITS_COLOR} value={totalDebits} />
+            <LegendTotal label="Créditos" color={CREDITS_COLOR} value={totalCredits} />
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+              <defs>
+                <linearGradient id="fillDebits" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={DEBITS_COLOR} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={DEBITS_COLOR} stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="fillCredits" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CREDITS_COLOR} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={CREDITS_COLOR} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                vertical={false}
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.6}
+              />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                 interval="preserveStartEnd"
-                stroke="hsl(var(--muted-foreground))"
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
               />
               <YAxis
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                 tickFormatter={(v) => abbreviate(Number(v))}
-                stroke="hsl(var(--muted-foreground))"
+                axisLine={false}
+                tickLine={false}
+                width={44}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--popover))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  color: "hsl(var(--popover-foreground))",
-                }}
-                labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                formatter={(value: number) =>
-                  value.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                }
+                content={<ActivityTooltip />}
+                cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
               />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="Débitos" stackId="a" fill="hsl(0 70% 60%)" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="Créditos" stackId="a" fill="hsl(142 70% 45%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="credits"
+                name="Créditos"
+                stroke={CREDITS_COLOR}
+                strokeWidth={2}
+                fill="url(#fillCredits)"
+                activeDot={{ r: 3, strokeWidth: 0 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="debits"
+                name="Débitos"
+                stroke={DEBITS_COLOR}
+                strokeWidth={2}
+                fill="url(#fillDebits)"
+                activeDot={{ r: 3, strokeWidth: 0 }}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function LegendTotal({
+  label,
+  color,
+  value,
+}: {
+  label: string;
+  color: string;
+  value: number;
+}): JSX.Element {
+  return (
+    <span className="flex items-center gap-1.5 text-muted-foreground">
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: color }}
+        aria-hidden
+      />
+      {label}:{" "}
+      <span className="font-medium text-foreground tabular-nums">
+        {value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </span>
+    </span>
+  );
+}
+
+function ActivityTooltip({
+  active,
+  payload,
+}: TooltipProps<number, string>): JSX.Element | null {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const point = payload[0]?.payload as {
+    fullDate: string;
+    count: number;
+  };
+
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
+      <p className="mb-1.5 font-medium text-popover-foreground">
+        {formatFullDate(point.fullDate)}
+      </p>
+      <div className="space-y-1">
+        {payload.map((entry) => (
+          <div key={entry.dataKey} className="flex items-center justify-between gap-6">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: entry.stroke }}
+                aria-hidden
+              />
+              {entry.name}
+            </span>
+            <span className="font-medium text-popover-foreground tabular-nums">
+              {Number(entry.value).toLocaleString(undefined, {
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between gap-6 border-t pt-1 text-muted-foreground">
+          <span>Transacciones</span>
+          <span className="tabular-nums">{point.count.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatFullDate(isoDate: string): string {
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return parsed.toLocaleDateString("es", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function abbreviate(value: number): string {
