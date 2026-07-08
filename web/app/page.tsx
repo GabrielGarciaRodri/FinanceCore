@@ -113,7 +113,19 @@ export default function LandingPage(): JSX.Element {
           </div>
         </div>
 
-        {/* TODO(SCRUM-20): screenshot/GIF del flujo de conciliación acá. */}
+        {/* Recorrido de la demo: video mudo en loop (mismo material que el
+            GIF del README, pero MP4 — 1/3 del peso y mejor calidad). */}
+        <div className="mx-auto mt-16 max-w-4xl">
+          <video
+            src="/demo.mp4"
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-label="Recorrido de la demo: login, dashboard, conciliación con discrepancias, export y dark mode"
+            className="w-full rounded-lg border shadow-lg"
+          />
+        </div>
 
         <div className="mx-auto mt-16 grid max-w-4xl gap-4 sm:grid-cols-3">
           {FEATURES.map((feature) => {

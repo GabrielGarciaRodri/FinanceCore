@@ -15,9 +15,7 @@
 >
 > Read-only user with sample data. The API runs on Render's free tier and sleeps after inactivity — the first visit shows a splash while it wakes up (~1 min).
 
-<!-- TODO(SCRUM-20): GIF del flujo de conciliación
 ![Reconciliation flow](docs/media/reconciliation-flow.gif)
--->
 
 ## What it does
 
