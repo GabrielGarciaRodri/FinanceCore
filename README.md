@@ -6,7 +6,7 @@
 
 ## 🚀 Live demo
 
-> **Try it now:** <!-- TODO(SCRUM-10): confirmar URL de Vercel --> [financecore-three.vercel.app](https://finance-core-three.vercel.app/)
+> **Try it now:** [financecore-demo.vercel.app](https://financecore-demo.vercel.app/)
 >
 > | | |
 > |---|---|
