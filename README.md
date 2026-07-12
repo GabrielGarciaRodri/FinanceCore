@@ -37,7 +37,7 @@
 | Testing | xUnit (domain) · **Testcontainers** (integration, real Postgres) · **Playwright** E2E in CI |
 | Deploy | Docker multi-stage · Render (API) · Vercel (web) · Neon (Postgres) |
 
-Architecture details, layer rules and design decisions: **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+Architecture details, layer rules and design decisions: **[ARCHITECTURE.md](ARCHITECTURE.md)**. Environment variables, migrations and deploy runbook: **[docs/OPERATIONS.md](docs/OPERATIONS.md)**.
 
 ## Quick start
 
@@ -80,3 +80,5 @@ CI runs build, unit, integration and full-stack E2E (Playwright against a real A
 ---
 
 Developed by **Gabriel García Rodríguez** — Full Stack Developer · .NET · Financial Systems
+
+Released under the [MIT License](LICENSE).
