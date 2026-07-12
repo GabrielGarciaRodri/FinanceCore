@@ -55,6 +55,14 @@ public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
         if (_domainEventDispatcher != null && pendingEvents.Count > 0)
         {
             await _domainEventDispatcher.DispatchAsync(pendingEvents, cancellationToken);
+
+            // Los handlers pueden mutar entidades trackeadas (ej: el
+            // TransactionPostedEventHandler aplica el balance a la cuenta).
+            // Sin este flush esos efectos quedan en el ChangeTracker y se
+            // pierden al cerrar el scope. La recursión despacha también los
+            // eventos que esos handlers emitan y corta cuando no hay cambios.
+            if (ChangeTracker.HasChanges())
+                affected += await SaveChangesAsync(cancellationToken);
         }
 
         return affected;
