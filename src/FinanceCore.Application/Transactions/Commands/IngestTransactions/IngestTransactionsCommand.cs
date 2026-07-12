@@ -343,7 +343,17 @@ public class IngestTransactionsCommandHandler
             });
         }
 
-        // 7. Agregar al repositorio
+        // 7. Ciclo de vida completo hasta Posted: el engine sólo matchea
+        //    transacciones Posted/Reconciled y los balances diarios sólo suman
+        //    Posted/Reconciled — una transacción Pending es invisible para todo
+        //    el sistema. La validación de negocio ya ocurrió (FluentValidation +
+        //    factories del dominio). El TransactionPostedEventHandler aplica el
+        //    balance a la cuenta al despachar el evento.
+        transaction.StartProcessing();
+        transaction.MarkAsValidated();
+        transaction.Post();
+
+        // 8. Agregar al repositorio
         _unitOfWork.Transactions.Add(transaction);
 
         return new TransactionResult

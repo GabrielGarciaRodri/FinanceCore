@@ -155,6 +155,35 @@ public class IngestTransactionsCommandTests : IAsyncLifetime
         (await ctx2.Transactions.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task IngestBatch_TransactionsEndUpPosted_SoEngineAndBalancesSeeThem()
+    {
+        var (uow, ctx) = BuildUow();
+        await using var _ = ctx;
+
+        var account = await SeedCheckingAccountAsync(uow);
+        var handler = new IngestTransactionsCommandHandler(uow, NullLogger<IngestTransactionsCommandHandler>.Instance);
+
+        var result = await handler.Handle(new IngestTransactionsCommand
+        {
+            Source = "TEST",
+            SourceType = SourceType.Manual,
+            Transactions = new[]
+            {
+                Dto("ext-posted-1", account.Id, "credit", 100m),
+                Dto("ext-posted-2", account.Id, "debit", 40m)
+            }
+        }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+
+        // El engine sólo matchea Posted/Reconciled y los balances diarios solo
+        // suman Posted/Reconciled: una ingesta que deja Pending es invisible.
+        var saved = await ctx.Transactions.ToListAsync();
+        saved.Should().HaveCount(2);
+        saved.Should().OnlyContain(t => t.Status == TransactionStatus.Posted);
+    }
+
     // ----------------------------------------------------------------- helpers
 
     private (IUnitOfWork uow, Persistence.Context.FinanceCoreDbContext ctx) BuildUow()
