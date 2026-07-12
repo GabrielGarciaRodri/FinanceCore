@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Providers } from "@/lib/providers";
 import { Toaster } from "@/components/ui/sonner";
 import { DemoBanner } from "@/components/layout/demo-banner";
@@ -50,8 +51,9 @@ export default function RootLayout({
         <DemoBanner />
         <Providers>{children}</Providers>
         <Toaster />
-        {/* Sólo emite en deployments de Vercel; en dev local es un no-op. */}
+        {/* Sólo emiten en deployments de Vercel; en dev local son no-op. */}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
