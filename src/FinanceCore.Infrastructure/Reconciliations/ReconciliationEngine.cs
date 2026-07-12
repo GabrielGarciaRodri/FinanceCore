@@ -74,6 +74,21 @@ public class ReconciliationEngine : IReconciliationEngine
             return BuildResult(existing);
         }
 
+        // La pasada BalanceOnly nunca degrada una rec que ya
+        // tiene resultados de matching: Complete() re-escribiría los totales del
+        // extracto con números de balance. El re-run CON extracto si puede
+        // re-conciliar una rec con discrepancias.
+        if (existing != null
+            && source == Domain.Entities.ReconciliationSource.BalanceOnly
+            && existing.Status == Domain.Enums.ReconciliationStatus.CompletedWithDiscrepancies)
+        {
+            _logger.LogInformation(
+                "Reconciliation skipped: balance-only pass over existing reconciliation " +
+                "with discrepancies for account ref {AccountRef} on {Date} (id {Id})",
+                accountRef, date, existing.Id);
+            return BuildResult(existing);
+        }
+
         var reconciliation = existing ?? Domain.Entities.Reconciliation.Start(
             accountId,
             date,
