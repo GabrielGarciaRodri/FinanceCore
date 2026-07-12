@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { trackExportDownloaded } from "@/lib/analytics";
 import { transactionsApi } from "@/lib/api/transactions";
 import type { SearchTransactionsRequest } from "@/lib/api/types";
 
@@ -26,6 +27,7 @@ export function ExportMenu({ params, disabled }: Props): JSX.Element {
     try {
       const { blob, filename } = await transactionsApi.downloadExport(format, params);
       triggerDownload(blob, filename);
+      trackExportDownloaded(format, "transactions");
       toast.success(`Export ${format.toUpperCase()} listo`);
     } catch (err) {
       const message = (err as Error)?.message ?? "Error desconocido";

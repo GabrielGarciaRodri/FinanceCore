@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import { ApproveReconciliationDialog } from "@/components/reconciliations/approv
 import { DiscrepanciesTable } from "@/components/reconciliations/discrepancies-table";
 import { ReadOnlyNotice } from "@/components/auth/read-only-notice";
 import { useAuth } from "@/lib/auth/context";
+import { trackDiscrepancyViewed, trackExportDownloaded } from "@/lib/analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,15 @@ export default function ReconciliationDetailPage(): JSX.Element {
     ? accounts?.find((a) => a.id === data.accountId)?.accountName ?? data.accountId
     : "";
 
+  // Un evento por conciliación visitada; el ref evita re-emitir en refetches.
+  const trackedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (data && trackedId.current !== data.id) {
+      trackedId.current = data.id;
+      trackDiscrepancyViewed(data.discrepancies.length);
+    }
+  }, [data]);
+
   const handleExportCsv = async () => {
     setExporting(true);
     try {
@@ -66,6 +76,7 @@ export default function ReconciliationDetailPage(): JSX.Element {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
+      trackExportDownloaded("csv", "reconciliation_detail");
       toast.success("Exportación lista");
     } catch (err) {
       toast.error(`Error al exportar: ${(err as Error).message}`);

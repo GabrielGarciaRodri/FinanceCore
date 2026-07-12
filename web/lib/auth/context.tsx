@@ -11,9 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { trackDemoLogin } from "@/lib/analytics";
 import { authApi } from "@/lib/api/auth";
 import { setAuthExpiredHandler } from "@/lib/api/client";
 import type { AuthUser, LoginRequest } from "@/lib/api/types";
+import { demoCredentials } from "@/lib/demo";
 import { tokenStorage } from "./storage";
 
 interface AuthContextValue {
@@ -76,6 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   const login = useCallback(
     async (payload: LoginRequest) => {
       const result = await authApi.login(payload);
+      // Conversión clave del funnel: sólo el usuario demo, no el admin.
+      if (payload.email.toLowerCase() === demoCredentials.email.toLowerCase()) {
+        trackDemoLogin();
+      }
       tokenStorage.setTokens(result.accessToken, result.refreshToken);
       if (result.user) {
         tokenStorage.setUser(result.user);
