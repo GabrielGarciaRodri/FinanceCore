@@ -775,6 +775,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reconciliation-source-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SourceProfileDto"][];
+                        "application/json": components["schemas"]["SourceProfileDto"][];
+                        "text/json": components["schemas"]["SourceProfileDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateSourceProfileCommand"];
+                    "text/json": components["schemas"]["CreateSourceProfileCommand"];
+                    "application/*+json": components["schemas"]["CreateSourceProfileCommand"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SourceProfileDto"];
+                        "application/json": components["schemas"]["SourceProfileDto"];
+                        "text/json": components["schemas"]["SourceProfileDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reconciliation-source-profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateSourceProfileCommand"];
+                    "text/json": components["schemas"]["UpdateSourceProfileCommand"];
+                    "application/*+json": components["schemas"]["UpdateSourceProfileCommand"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SourceProfileDto"];
+                        "application/json": components["schemas"]["SourceProfileDto"];
+                        "text/json": components["schemas"]["SourceProfileDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/Transactions/ingest": {
         parameters: {
             query?: never;
@@ -1069,6 +1200,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/Transactions/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string[];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/Transactions/export.csv": {
         parameters: {
             query?: never;
@@ -1215,6 +1381,21 @@ export interface components {
             totalBalance: number;
             /** Format: int32 */
             accountCount: number;
+        };
+        CreateSourceProfileCommand: {
+            /** Format: uuid */
+            accountId?: string | null;
+            sourceKey: string;
+            displayName: string;
+            payoutPattern: string;
+            internalMatchField: string;
+            internalMatchPattern: string;
+            /** Format: double */
+            expectedFeePercent: number;
+            /** Format: double */
+            feeTolerancePercent: number;
+            /** Format: int32 */
+            groupingWindowDays: number;
         };
         DashboardDto: {
             balancesByCurrency: components["schemas"]["BalanceByCurrencyDto"][];
@@ -1391,6 +1572,7 @@ export interface components {
             approvedBy?: string | null;
             notes?: string | null;
             discrepancies: components["schemas"]["ReconciliationDiscrepancyDto"][];
+            matchGroups: components["schemas"]["ReconciliationMatchGroupDto"][];
         };
         ReconciliationDtoPagedResult: {
             items: components["schemas"]["ReconciliationDto"][];
@@ -1404,6 +1586,38 @@ export interface components {
             readonly totalPages: number;
             readonly hasNextPage: boolean;
             readonly hasPreviousPage: boolean;
+        };
+        ReconciliationMatchGroupDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sourceProfileId: string;
+            externalReference: string;
+            /** Format: double */
+            payoutAmount: number;
+            /** Format: date */
+            payoutDate: string;
+            /** Format: int32 */
+            groupedCount: number;
+            /** Format: double */
+            groupedAmount: number;
+            /** Format: double */
+            feeAmount: number;
+            /** Format: double */
+            feePercent: number;
+            /** Format: uuid */
+            feeTransactionId?: string | null;
+            /** Format: date */
+            windowStart: string;
+            /** Format: date */
+            windowEnd: string;
+            items: components["schemas"]["ReconciliationMatchGroupItemDto"][];
+        };
+        ReconciliationMatchGroupItemDto: {
+            /** Format: uuid */
+            transactionId: string;
+            /** Format: double */
+            amount: number;
         };
         ReconciliationRangePoint: {
             /** Format: date */
@@ -1466,7 +1680,29 @@ export interface components {
             discrepanciesResolved: number;
             /** Format: int32 */
             reconciliationsApproved: number;
+            /** Format: int32 */
+            matchGroupsCreated: number;
+            payuProfileCreated: boolean;
             reconciliationIds: string[];
+            skippedDates: string[];
+        };
+        SourceProfileDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            accountId?: string | null;
+            sourceKey: string;
+            displayName: string;
+            payoutPattern: string;
+            internalMatchField: string;
+            internalMatchPattern: string;
+            /** Format: double */
+            expectedFeePercent: number;
+            /** Format: double */
+            feeTolerancePercent: number;
+            /** Format: int32 */
+            groupingWindowDays: number;
+            isActive: boolean;
         };
         /** @enum {string} */
         SourceType: "Api" | "CsvFile" | "ExcelFile" | "Sftp" | "Manual" | "System";
@@ -1623,6 +1859,22 @@ export interface components {
             largestDebit: number;
             /** Format: double */
             largestCredit: number;
+        };
+        UpdateSourceProfileCommand: {
+            /** Format: uuid */
+            id: string;
+            sourceKey: string;
+            displayName: string;
+            payoutPattern: string;
+            internalMatchField: string;
+            internalMatchPattern: string;
+            /** Format: double */
+            expectedFeePercent: number;
+            /** Format: double */
+            feeTolerancePercent: number;
+            /** Format: int32 */
+            groupingWindowDays: number;
+            isActive: boolean;
         };
         UploadRowError: {
             /** Format: int32 */

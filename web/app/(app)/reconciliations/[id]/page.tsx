@@ -8,6 +8,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Download, Loader2 } from "lucide-
 import { toast } from "sonner";
 import { ApproveReconciliationDialog } from "@/components/reconciliations/approve-reconciliation-dialog";
 import { DiscrepanciesTable } from "@/components/reconciliations/discrepancies-table";
+import { MatchGroupsCard } from "@/components/reconciliations/match-groups-card";
 import { ReadOnlyNotice } from "@/components/auth/read-only-notice";
 import { useAuth } from "@/lib/auth/context";
 import { trackDiscrepancyViewed, trackExportDownloaded } from "@/lib/analytics";
@@ -194,6 +195,15 @@ function DetailBody({
         <CoverageCard rec={rec} />
         <BalancesCard rec={rec} />
       </section>
+
+      {(rec.matchGroups?.length ?? 0) > 0 && (
+        <section
+          className="motion-safe:animate-fade-in-up"
+          style={{ animationDelay: "40ms" }}
+        >
+          <MatchGroupsCard groups={rec.matchGroups ?? []} />
+        </section>
+      )}
 
       <section
         className="motion-safe:animate-fade-in-up"

@@ -105,7 +105,12 @@ public class ReconciliationEngine : IReconciliationEngine
             var transactions = await _unitOfWork.Transactions.GetByAccountAndDateRangeAsync(accountId, date, date, ct);
             var postedTransactions = transactions
                 .Where(t => t.Status == Domain.Enums.TransactionStatus.Posted
-                         || t.Status == Domain.Enums.TransactionStatus.Reconciled)
+                         // Una transacción Reconciled pertenece a la rec que la
+                         // concilió (ej: venta agrupada por el payout de OTRA
+                         // fecha) — no debe contarse ni reportarse como faltante
+                         // en la rec de su propia fecha.
+                         || (t.Status == Domain.Enums.TransactionStatus.Reconciled
+                             && t.ReconciliationId == reconciliation.Id))
                 .ToList();
 
             DetectDuplicates(reconciliation, postedTransactions);

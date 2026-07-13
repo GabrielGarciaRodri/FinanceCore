@@ -64,6 +64,10 @@ public class DevController : ControllerBase
             });
         }
 
+        // Perfil de fuente PayU para el matching N:1 (idempotente): habilita el
+        // escenario "payout agrupado" y, de paso, el feature en la demo pública.
+        var payuProfileCreated = await EnsurePayuGroupProfileAsync(unitOfWork, cancellationToken);
+
         // Sufijo único por corrida → permite re-correr el endpoint sin colisionar
         // con externalIds previos.
         var runId = Guid.NewGuid().ToString("N")[..6];
@@ -83,6 +87,7 @@ public class DevController : ControllerBase
         var summary = new SeedReconciliationsResponse
         {
             RunId = runId,
+            PayuProfileCreated = payuProfileCreated,
             ReconciliationIds = new List<Guid>()
         };
 
@@ -132,6 +137,17 @@ public class DevController : ControllerBase
             // 2. Armar statement con mix de matching/mismatches/missing.
             var statement = BuildStatement(txns, account.Currency.Code, date);
 
+            // 2b. Sólo en la fecha más reciente: escenario de matching N:1 —
+            //     ventas individuales PayU de los días previos + UN payout neto
+            //     de comisión en el extracto. El engine las agrupa solo.
+            if (i == 0)
+            {
+                var (payoutLine, salesCreated) = await CreateGroupedPayoutScenarioAsync(
+                    unitOfWork, account, date, runId, cancellationToken);
+                statement.Add(payoutLine);
+                summary.TransactionsCreated += salesCreated;
+            }
+
             // 3. Reconciliar usando el engine real.
             var result = await engine.ReconcileWithStatementAsync(
                 account.Id,
@@ -141,6 +157,13 @@ public class DevController : ControllerBase
 
             summary.ReconciliationIds.Add(result.ReconciliationId);
             summary.DiscrepanciesCreated += result.DiscrepancyCount;
+
+            if (i == 0)
+            {
+                var todayRec = await unitOfWork.Reconciliations
+                    .GetByIdAsync(result.ReconciliationId, cancellationToken);
+                summary.MatchGroupsCreated = todayRec?.MatchGroups.Count ?? 0;
+            }
 
             // 4. Post-acciones (cíclicas por batch % 4) para variar estados en la UI:
             //    pendiente / resuelta parcial / resuelta + aprobada / aprobada con pendientes.
@@ -343,6 +366,114 @@ public class DevController : ControllerBase
     }
 
     /// <summary>
+    /// Crea (una sola vez) el perfil de fuente PayU que habilita el matching
+    /// N:1: reconoce payouts "PAYU-LIQ*" en el extracto y agrupa las ventas
+    /// internas con fuente PAYU-VENTAS de los últimos 7 días, esperando una
+    /// comisión del 3,5% ± 0,5%.
+    /// </summary>
+    private static async Task<bool> EnsurePayuGroupProfileAsync(
+        IUnitOfWork unitOfWork,
+        CancellationToken ct)
+    {
+        var existing = await unitOfWork.SourceProfiles.GetAllAsync(ct);
+        if (existing.Any(p => p.SourceKey == "PAYU"))
+            return false;
+
+        var profile = ReconciliationSourceProfile.Create(
+            accountId: null,
+            sourceKey: "PAYU",
+            displayName: "PayU",
+            payoutPattern: "^PAYU-LIQ",
+            internalMatchField: InternalMatchField.ExternalIdSource,
+            internalMatchPattern: "^PAYU-VENTAS$",
+            expectedFeePercent: 0.035m,
+            feeTolerancePercent: 0.005m,
+            groupingWindowDays: 7);
+
+        unitOfWork.SourceProfiles.Add(profile);
+        await unitOfWork.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>
+    /// Escenario N:1: ventas individuales PayU (ayer y anteayer) + un payout en
+    /// el extracto de hoy por el bruto − 3,5% de comisión. Si quedaron ventas
+    /// Posted de una corrida anterior (p.ej. un payout que no agrupó), las reusa
+    /// como pool en lugar de crear más — el re-seed se auto-repara.
+    /// </summary>
+    private static async Task<(ExternalStatementLine PayoutLine, int SalesCreated)> CreateGroupedPayoutScenarioAsync(
+        IUnitOfWork unitOfWork,
+        Account account,
+        DateOnly payoutDate,
+        string runId,
+        CancellationToken ct)
+    {
+        var currency = account.Currency.Code;
+
+        // Pool existente: ventas PayU Posted (no agrupadas) dentro de la ventana.
+        var windowTxns = await unitOfWork.Transactions.GetByAccountAndDateRangeAsync(
+            account.Id, payoutDate.AddDays(-7), payoutDate, ct);
+        var existingPool = windowTxns
+            .Where(t => t.ExternalIdSource == "PAYU-VENTAS" && t.Status == TransactionStatus.Posted)
+            .ToList();
+
+        decimal gross;
+        int salesCount;
+        var salesCreated = 0;
+
+        if (existingPool.Count > 0)
+        {
+            gross = existingPool.Sum(t => t.Amount.Amount);
+            salesCount = existingPool.Count;
+        }
+        else
+        {
+            var rng = new Random(HashCode.Combine(runId, "payu-group"));
+            salesCount = rng.Next(12, 19);
+            gross = 0m;
+
+            for (var i = 0; i < salesCount; i++)
+            {
+                var saleDate = payoutDate.AddDays(-1 - (i % 2)); // ayer y anteayer
+                var amount = rng.Next(45, 580) * 1000m;
+                gross += amount;
+
+                var sale = Transaction.CreateCredit(
+                    externalId: $"payu-{runId}-venta{i}",
+                    source: "PAYU-VENTAS",
+                    accountId: account.Id,
+                    amount: amount,
+                    currencyCode: currency,
+                    valueDate: saleDate,
+                    bookingDate: saleDate,
+                    description: $"Venta PayU · pedido #{rng.Next(40000, 99999)}");
+                sale.Categorize("Ventas online", "PayU");
+                sale.StartProcessing();
+                sale.MarkAsValidated();
+                sale.Post();
+                unitOfWork.Transactions.Add(sale);
+                salesCreated++;
+            }
+
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+
+        // payout = bruto − comisión (redondeada al peso): la comisión implícita
+        // queda dentro de la banda 3,5% ± 0,5% del perfil.
+        var fee = Math.Round(gross * 0.035m);
+        var payout = gross - fee;
+
+        var payoutLine = new ExternalStatementLine(
+            ExternalReference: $"PAYU-LIQ-{runId}".ToUpperInvariant(),
+            Amount: payout,
+            CurrencyCode: currency,
+            ValueDate: payoutDate,
+            Description: $"Abono PayU · liquidación {salesCount} ventas");
+
+        return (payoutLine, salesCreated);
+    }
+
+    /// <summary>
     /// Aplica acciones de resolve/approve para variar los estados visibles.
     /// </summary>
     private static async Task ApplyPostActions(
@@ -422,6 +553,13 @@ public class SeedReconciliationsResponse
     public int DiscrepanciesCreated { get; set; }
     public int DiscrepanciesResolved { get; set; }
     public int ReconciliationsApproved { get; set; }
+
+    /// <summary>Grupos de matching N:1 en la rec más reciente (payouts agrupados).</summary>
+    public int MatchGroupsCreated { get; set; }
+
+    /// <summary>true si esta corrida creó el perfil de fuente PayU (primera vez).</summary>
+    public bool PayuProfileCreated { get; set; }
+
     public List<Guid> ReconciliationIds { get; set; } = new();
 
     /// <summary>

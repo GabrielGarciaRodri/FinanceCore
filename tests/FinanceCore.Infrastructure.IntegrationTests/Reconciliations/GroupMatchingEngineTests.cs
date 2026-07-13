@@ -175,6 +175,48 @@ public class GroupMatchingEngineTests : IAsyncLifetime
             t.ExternalIdSource == "PAYU" && t.Status == TransactionStatus.Posted)).Should().Be(2);
     }
 
+    [Fact]
+    public async Task GroupedSale_DoesNotPollute_ItsOwnDatesReconciliation()
+    {
+        var date = DateOnly.FromDateTime(DateTime.UtcNow);
+        var saleDate = date.AddDays(-1);
+        var (uow, ctx) = BuildUow();
+        await using var _ = ctx;
+
+        var account = await SeedCheckingAccountAsync(uow);
+        await SeedPayuProfileAsync(uow);
+
+        SeedPostedCredit(uow, account.Id, "sale-1", "PAYU", 1000m, saleDate);
+        await uow.SaveChangesAsync();
+
+        // El payout de HOY agrupa la venta de AYER.
+        var engine = BuildEngine(uow);
+        var payoutRun = await engine.ReconcileWithStatementAsync(account.Id, date, new[]
+        {
+            new ExternalStatementLine("PAYU-LIQ-004", 965m, "USD", date, "Liquidación PAYU")
+        });
+        payoutRun.MatchedCount.Should().Be(1);
+
+        // Conciliar AYER (fecha de la venta) con un extracto vacío: la venta ya
+        // pertenece a la rec del payout y no debe reportarse como faltante acá.
+        var (uow2, ctx2) = BuildUow();
+        await using var __ = ctx2;
+        var saleDateEngine = BuildEngine(uow2);
+
+        var saleDateRun = await saleDateEngine.ReconcileWithStatementAsync(
+            account.Id, saleDate, Array.Empty<ExternalStatementLine>());
+
+        saleDateRun.Status.Should().Be(ReconciliationStatus.Completed);
+        saleDateRun.UnmatchedInternal.Should().Be(0);
+        saleDateRun.MatchedCount.Should().Be(0);
+
+        var (___, ctx3) = BuildUow();
+        await using var ____ = ctx3;
+        var saleDateRec = await ctx3.Reconciliations
+            .SingleAsync(r => r.ReconciliationDate == saleDate);
+        saleDateRec.TotalInternalRecords.Should().Be(0);
+    }
+
     // ----------------------------------------------------------------- helpers
 
     private (IUnitOfWork uow, Persistence.Context.FinanceCoreDbContext ctx) BuildUow()

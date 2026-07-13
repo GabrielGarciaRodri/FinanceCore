@@ -46,6 +46,8 @@ export type AccountListItemDto = Schemas["AccountListItemDto"];
 
 export type ReconciliationDto = Schemas["ReconciliationDto"];
 export type ReconciliationDiscrepancyDto = Schemas["ReconciliationDiscrepancyDto"];
+export type ReconciliationMatchGroupDto = Schemas["ReconciliationMatchGroupDto"];
+export type ReconciliationMatchGroupItemDto = Schemas["ReconciliationMatchGroupItemDto"];
 export type ReconciliationStatus = Schemas["ReconciliationStatus"];
 export type DiscrepancyType = Schemas["DiscrepancyType"];
 export type ResolutionType = Schemas["ResolutionType"];
