@@ -31,6 +31,9 @@ public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Institution> Institutions => Set<Institution>();
     public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
     public DbSet<ReconciliationDiscrepancy> ReconciliationDiscrepancies => Set<ReconciliationDiscrepancy>();
+    public DbSet<ReconciliationSourceProfile> ReconciliationSourceProfiles => Set<ReconciliationSourceProfile>();
+    public DbSet<ReconciliationMatchGroup> ReconciliationMatchGroups => Set<ReconciliationMatchGroup>();
+    public DbSet<ReconciliationMatchGroupItem> ReconciliationMatchGroupItems => Set<ReconciliationMatchGroupItem>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -92,6 +95,9 @@ public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.ApplyConfiguration(new InstitutionConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationDiscrepancyConfiguration());
+        modelBuilder.ApplyConfiguration(new ReconciliationSourceProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new ReconciliationMatchGroupConfiguration());
+        modelBuilder.ApplyConfiguration(new ReconciliationMatchGroupItemConfiguration());
         modelBuilder.ApplyConfiguration(new ApplicationUserConfiguration());
         modelBuilder.ApplyConfiguration(new RefreshTokenConfiguration());
 
@@ -276,6 +282,98 @@ public class ReconciliationConfiguration : IEntityTypeConfiguration<Reconciliati
             .WithOne()
             .HasForeignKey(d => d.ReconciliationId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata
+            .FindNavigation(nameof(Reconciliation.MatchGroups))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(r => r.MatchGroups)
+            .WithOne()
+            .HasForeignKey(g => g.ReconciliationId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReconciliationSourceProfileConfiguration : IEntityTypeConfiguration<ReconciliationSourceProfile>
+{
+    public void Configure(EntityTypeBuilder<ReconciliationSourceProfile> builder)
+    {
+        builder.ToTable("reconciliation_source_profiles");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.Id).ValueGeneratedNever();
+
+        builder.HasIndex(p => p.AccountId).HasDatabaseName("idx_source_profile_account");
+
+        builder.Property(p => p.SourceKey).HasMaxLength(50).IsRequired();
+        builder.Property(p => p.DisplayName).HasMaxLength(100).IsRequired();
+        builder.Property(p => p.PayoutPattern).HasMaxLength(200).IsRequired();
+        builder.Property(p => p.InternalMatchPattern).HasMaxLength(200).IsRequired();
+
+        builder.Property(p => p.InternalMatchField)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(p => p.ExpectedFeePercent).HasPrecision(6, 5).IsRequired();
+        builder.Property(p => p.FeeTolerancePercent).HasPrecision(6, 5).IsRequired();
+
+        builder.Ignore(p => p.DomainEvents);
+    }
+}
+
+public class ReconciliationMatchGroupConfiguration : IEntityTypeConfiguration<ReconciliationMatchGroup>
+{
+    public void Configure(EntityTypeBuilder<ReconciliationMatchGroup> builder)
+    {
+        builder.ToTable("reconciliation_match_groups");
+        builder.HasKey(g => g.Id);
+        // Id de dominio: ver nota en ReconciliationDiscrepancyConfiguration.
+        builder.Property(g => g.Id).ValueGeneratedNever();
+
+        builder.HasIndex(g => g.ReconciliationId).HasDatabaseName("idx_match_group_reconciliation");
+        builder.HasIndex(g => new { g.ReconciliationId, g.ExternalReference })
+            .IsUnique()
+            .HasDatabaseName("uq_match_group_reference");
+
+        builder.Property(g => g.ExternalReference).HasMaxLength(100).IsRequired();
+        builder.Property(g => g.PayoutAmount).HasPrecision(18, 4).IsRequired();
+        builder.Property(g => g.GroupedAmount).HasPrecision(18, 4).IsRequired();
+        builder.Property(g => g.FeeAmount).HasPrecision(18, 4).IsRequired();
+        builder.Property(g => g.FeePercent).HasPrecision(9, 6).IsRequired();
+
+        builder.HasOne<ReconciliationSourceProfile>()
+            .WithMany()
+            .HasForeignKey(g => g.SourceProfileId);
+
+        builder.Ignore(g => g.DomainEvents);
+
+        builder.Metadata
+            .FindNavigation(nameof(ReconciliationMatchGroup.Items))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(g => g.Items)
+            .WithOne()
+            .HasForeignKey(i => i.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReconciliationMatchGroupItemConfiguration : IEntityTypeConfiguration<ReconciliationMatchGroupItem>
+{
+    public void Configure(EntityTypeBuilder<ReconciliationMatchGroupItem> builder)
+    {
+        builder.ToTable("reconciliation_match_group_items");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.Id).ValueGeneratedNever();
+
+        builder.HasIndex(i => i.TransactionId)
+            .IsUnique()
+            .HasDatabaseName("uq_match_group_item_transaction");
+        builder.HasIndex(i => i.GroupId).HasDatabaseName("idx_match_group_item_group");
+
+        builder.Property(i => i.Amount).HasPrecision(18, 4).IsRequired();
+
+        builder.Ignore(i => i.DomainEvents);
     }
 }
 
@@ -285,6 +383,10 @@ public class ReconciliationDiscrepancyConfiguration : IEntityTypeConfiguration<R
     {
         builder.ToTable("reconciliation_discrepancies");
         builder.HasKey(d => d.Id);
+        // El Id lo genera el dominio. Sin esto, EF asume PK store-generated y
+        // marca Modified (no Added) a una discrepancia nueva agregada a una
+        // rec recargada — el UPDATE no encuentra fila y explota por concurrencia.
+        builder.Property(d => d.Id).ValueGeneratedNever();
 
         builder.HasIndex(d => d.ReconciliationId).HasDatabaseName("idx_discrepancy_reconciliation");
         builder.HasIndex(d => d.IsResolved).HasDatabaseName("idx_discrepancy_resolved");

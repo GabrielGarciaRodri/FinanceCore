@@ -11,6 +11,7 @@ public class UnitOfWork : IUnitOfWork
     private readonly IDailyBalanceRepository _dailyBalanceRepository;
     private readonly IExchangeRateRepository _exchangeRateRepository;
     private readonly IReconciliationRepository _reconciliationRepository;
+    private readonly IReconciliationSourceProfileRepository _sourceProfileRepository;
 
     public UnitOfWork(
         FinanceCoreDbContext context,
@@ -18,7 +19,8 @@ public class UnitOfWork : IUnitOfWork
         IAccountRepository accountRepository,
         IDailyBalanceRepository dailyBalanceRepository,
         IExchangeRateRepository exchangeRateRepository,
-        IReconciliationRepository reconciliationRepository)
+        IReconciliationRepository reconciliationRepository,
+        IReconciliationSourceProfileRepository sourceProfileRepository)
     {
         _context = context;
         _transactionRepository = transactionRepository;
@@ -26,6 +28,7 @@ public class UnitOfWork : IUnitOfWork
         _dailyBalanceRepository = dailyBalanceRepository;
         _exchangeRateRepository = exchangeRateRepository;
         _reconciliationRepository = reconciliationRepository;
+        _sourceProfileRepository = sourceProfileRepository;
     }
 
     public ITransactionRepository Transactions => _transactionRepository;
@@ -33,6 +36,7 @@ public class UnitOfWork : IUnitOfWork
     public IDailyBalanceRepository DailyBalances => _dailyBalanceRepository;
     public IExchangeRateRepository ExchangeRates => _exchangeRateRepository;
     public IReconciliationRepository Reconciliations => _reconciliationRepository;
+    public IReconciliationSourceProfileRepository SourceProfiles => _sourceProfileRepository;
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => await _context.SaveChangesAsync(cancellationToken);

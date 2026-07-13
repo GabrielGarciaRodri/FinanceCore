@@ -18,6 +18,8 @@ public class ReconciliationRepository : IReconciliationRepository
     public async Task<Reconciliation?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Reconciliations
             .Include(r => r.Discrepancies)
+            .Include(r => r.MatchGroups)
+                .ThenInclude(g => g.Items)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
     public async Task<Reconciliation?> GetByAccountAndDateAsync(
@@ -26,6 +28,8 @@ public class ReconciliationRepository : IReconciliationRepository
         CancellationToken ct = default)
         => await _context.Reconciliations
             .Include(r => r.Discrepancies)
+            .Include(r => r.MatchGroups)
+                .ThenInclude(g => g.Items)
             .FirstOrDefaultAsync(r => r.AccountId == accountId && r.ReconciliationDate == date, ct);
 
     public async Task<IReadOnlyList<Reconciliation>> GetByAccountAsync(

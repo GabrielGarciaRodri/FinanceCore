@@ -196,8 +196,9 @@ public class IngestTransactionsCommandTests : IAsyncLifetime
         var dailyRepo = new DailyBalanceRepository(ctx);
         var fxRepo = new ExchangeRateRepository(ctx, cache);
         var recRepo = new ReconciliationRepository(ctx);
+        var profileRepo = new ReconciliationSourceProfileRepository(ctx);
 
-        var uow = new UnitOfWork(ctx, txRepo, acctRepo, dailyRepo, fxRepo, recRepo);
+        var uow = new UnitOfWork(ctx, txRepo, acctRepo, dailyRepo, fxRepo, recRepo, profileRepo);
         return (uow, ctx);
     }
 

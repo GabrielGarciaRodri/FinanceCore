@@ -1,4 +1,5 @@
 using FinanceCore.Domain.Enums;
+using FinanceCore.Domain.Exceptions;
 using FinanceCore.Domain.ValueObjects;
 
 namespace FinanceCore.Domain.Entities;
@@ -124,6 +125,7 @@ public class TransactionSource : BaseEntity
 public class Reconciliation : BaseEntity, IAggregateRoot
 {
     private readonly List<ReconciliationDiscrepancy> _discrepancies = new();
+    private readonly List<ReconciliationMatchGroup> _matchGroups = new();
 
     public DateOnly ReconciliationDate { get; private set; }
     public Guid AccountId { get; private set; }
@@ -147,6 +149,7 @@ public class Reconciliation : BaseEntity, IAggregateRoot
 
     public virtual Account? Account { get; private set; }
     public virtual IReadOnlyCollection<ReconciliationDiscrepancy> Discrepancies => _discrepancies.AsReadOnly();
+    public virtual IReadOnlyCollection<ReconciliationMatchGroup> MatchGroups => _matchGroups.AsReadOnly();
 
     // EF Core
     private Reconciliation() { }
@@ -230,6 +233,34 @@ public class Reconciliation : BaseEntity, IAggregateRoot
             MatchedCount,
             unmatchedInternal + unmatchedExternal,
             DiscrepancyAmount));
+    }
+
+    /// <summary>
+    /// Registra un grupo de matching N:1: un payout de pasarela conciliado
+    /// contra el conjunto de ventas internas que agrupa.
+    /// </summary>
+    public ReconciliationMatchGroup AddMatchGroup(
+        Guid sourceProfileId,
+        string externalReference,
+        decimal payoutAmount,
+        DateOnly payoutDate,
+        IReadOnlyCollection<(Guid TransactionId, decimal Amount)> items,
+        DateOnly windowStart,
+        DateOnly windowEnd)
+    {
+        if (items == null || items.Count == 0)
+            throw new DomainException("Un grupo de matching requiere al menos una transacción.");
+        if (payoutAmount <= 0)
+            throw new DomainException("El payout de un grupo debe ser positivo.");
+        if (_matchGroups.Any(g => string.Equals(g.ExternalReference, externalReference, StringComparison.OrdinalIgnoreCase)))
+            throw new DomainException($"Ya existe un grupo para el payout {externalReference}.");
+
+        var group = ReconciliationMatchGroup.Create(
+            Id, sourceProfileId, externalReference, payoutAmount, payoutDate,
+            items, windowStart, windowEnd);
+
+        _matchGroups.Add(group);
+        return group;
     }
 
     public void Fail(string reason)
@@ -320,6 +351,121 @@ public class ReconciliationDiscrepancy : BaseEntity
         ResolvedAt = IsResolved ? DateTimeOffset.UtcNow : null;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
+}
+
+/// <summary>
+/// Grupo de matching N:1: un payout de pasarela (una línea de extracto)
+/// conciliado contra N ventas internas, neto de comisión.
+/// Hijo del agregado Reconciliation.
+/// </summary>
+public class ReconciliationMatchGroup : BaseEntity
+{
+    private readonly List<ReconciliationMatchGroupItem> _items = new();
+
+    public Guid ReconciliationId { get; private set; }
+    public Guid SourceProfileId { get; private set; }
+
+    /// <summary>Referencia de la línea de extracto (el payout).</summary>
+    public string ExternalReference { get; private set; } = null!;
+    public decimal PayoutAmount { get; private set; }
+    public DateOnly PayoutDate { get; private set; }
+
+    /// <summary>Cantidad de transacciones internas agrupadas.</summary>
+    public int GroupedCount { get; private set; }
+
+    /// <summary>Suma bruta de las transacciones agrupadas (ventas − devoluciones).</summary>
+    public decimal GroupedAmount { get; private set; }
+
+    /// <summary>Comisión implícita: GroupedAmount − PayoutAmount.</summary>
+    public decimal FeeAmount { get; private set; }
+
+    /// <summary>Comisión como fracción del bruto (FeeAmount / GroupedAmount).</summary>
+    public decimal FeePercent { get; private set; }
+
+    /// <summary>Transacción Fee generada al conciliar el grupo.</summary>
+    public Guid? FeeTransactionId { get; private set; }
+
+    /// <summary>Rango de fechas real que cubre el grupo.</summary>
+    public DateOnly WindowStart { get; private set; }
+    public DateOnly WindowEnd { get; private set; }
+
+    public virtual IReadOnlyCollection<ReconciliationMatchGroupItem> Items => _items.AsReadOnly();
+
+    // EF Core
+    private ReconciliationMatchGroup() { }
+
+    internal static ReconciliationMatchGroup Create(
+        Guid reconciliationId,
+        Guid sourceProfileId,
+        string externalReference,
+        decimal payoutAmount,
+        DateOnly payoutDate,
+        IReadOnlyCollection<(Guid TransactionId, decimal Amount)> items,
+        DateOnly windowStart,
+        DateOnly windowEnd)
+    {
+        var groupedAmount = items.Sum(i => i.Amount);
+        if (groupedAmount < payoutAmount)
+            throw new DomainException(
+                $"La suma agrupada ({groupedAmount}) no puede ser menor que el payout ({payoutAmount}).");
+
+        var group = new ReconciliationMatchGroup
+        {
+            Id = Guid.NewGuid(),
+            ReconciliationId = reconciliationId,
+            SourceProfileId = sourceProfileId,
+            ExternalReference = externalReference,
+            PayoutAmount = payoutAmount,
+            PayoutDate = payoutDate,
+            GroupedCount = items.Count,
+            GroupedAmount = groupedAmount,
+            FeeAmount = groupedAmount - payoutAmount,
+            FeePercent = groupedAmount != 0 ? (groupedAmount - payoutAmount) / groupedAmount : 0m,
+            WindowStart = windowStart,
+            WindowEnd = windowEnd,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        foreach (var (transactionId, amount) in items)
+            group._items.Add(ReconciliationMatchGroupItem.Create(group.Id, transactionId, amount));
+
+        return group;
+    }
+
+    public void AttachFeeTransaction(Guid feeTransactionId)
+    {
+        if (FeeTransactionId.HasValue)
+            throw new DomainException("El grupo ya tiene una transacción de comisión asociada.");
+
+        FeeTransactionId = feeTransactionId;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+}
+
+/// <summary>
+/// Transacción interna miembro de un grupo de matching N:1.
+/// El índice único por transacción garantiza exclusividad de grupo.
+/// </summary>
+public class ReconciliationMatchGroupItem : BaseEntity
+{
+    public Guid GroupId { get; private set; }
+    public Guid TransactionId { get; private set; }
+
+    /// <summary>Snapshot del monto al momento de agrupar.</summary>
+    public decimal Amount { get; private set; }
+
+    // EF Core
+    private ReconciliationMatchGroupItem() { }
+
+    internal static ReconciliationMatchGroupItem Create(Guid groupId, Guid transactionId, decimal amount)
+        => new()
+        {
+            Id = Guid.NewGuid(),
+            GroupId = groupId,
+            TransactionId = transactionId,
+            Amount = amount,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
 }
 
 /// <summary>

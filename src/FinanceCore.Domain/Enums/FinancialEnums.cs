@@ -148,6 +148,22 @@ public enum DiscrepancyType
 }
 
 /// <summary>
+/// Campo de la transacción interna que identifica las ventas de una pasarela
+/// para el matching N:1 (perfil de fuente).
+/// </summary>
+public enum InternalMatchField
+{
+    /// <summary>Matchear contra Transaction.ExternalIdSource</summary>
+    ExternalIdSource = 1,
+
+    /// <summary>Matchear contra Transaction.Category</summary>
+    Category = 2,
+
+    /// <summary>Matchear contra el nombre de la contraparte</summary>
+    CounterpartyName = 3
+}
+
+/// <summary>
 /// Estado de resolución de una discrepancia.
 /// </summary>
 public enum ResolutionType

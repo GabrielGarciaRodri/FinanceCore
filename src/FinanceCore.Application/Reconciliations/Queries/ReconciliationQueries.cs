@@ -28,6 +28,34 @@ public record ReconciliationDto
     public string? ApprovedBy { get; init; }
     public string? Notes { get; init; }
     public IReadOnlyList<ReconciliationDiscrepancyDto> Discrepancies { get; init; } = Array.Empty<ReconciliationDiscrepancyDto>();
+    public IReadOnlyList<ReconciliationMatchGroupDto> MatchGroups { get; init; } = Array.Empty<ReconciliationMatchGroupDto>();
+}
+
+/// <summary>
+/// Payout de pasarela conciliado por matching N:1: la línea de extracto,
+/// las ventas agrupadas y la comisión explicada.
+/// </summary>
+public record ReconciliationMatchGroupDto
+{
+    public Guid Id { get; init; }
+    public Guid SourceProfileId { get; init; }
+    public string ExternalReference { get; init; } = null!;
+    public decimal PayoutAmount { get; init; }
+    public DateOnly PayoutDate { get; init; }
+    public int GroupedCount { get; init; }
+    public decimal GroupedAmount { get; init; }
+    public decimal FeeAmount { get; init; }
+    public decimal FeePercent { get; init; }
+    public Guid? FeeTransactionId { get; init; }
+    public DateOnly WindowStart { get; init; }
+    public DateOnly WindowEnd { get; init; }
+    public IReadOnlyList<ReconciliationMatchGroupItemDto> Items { get; init; } = Array.Empty<ReconciliationMatchGroupItemDto>();
+}
+
+public record ReconciliationMatchGroupItemDto
+{
+    public Guid TransactionId { get; init; }
+    public decimal Amount { get; init; }
 }
 
 public record ReconciliationDiscrepancyDto
@@ -200,6 +228,26 @@ internal static class ReconciliationMapper
             ResolutionType = d.ResolutionType?.ToString(),
             ResolutionNotes = d.ResolutionNotes,
             ResolvedAt = d.ResolvedAt
+        }).ToList(),
+        MatchGroups = r.MatchGroups.Select(g => new ReconciliationMatchGroupDto
+        {
+            Id = g.Id,
+            SourceProfileId = g.SourceProfileId,
+            ExternalReference = g.ExternalReference,
+            PayoutAmount = g.PayoutAmount,
+            PayoutDate = g.PayoutDate,
+            GroupedCount = g.GroupedCount,
+            GroupedAmount = g.GroupedAmount,
+            FeeAmount = g.FeeAmount,
+            FeePercent = g.FeePercent,
+            FeeTransactionId = g.FeeTransactionId,
+            WindowStart = g.WindowStart,
+            WindowEnd = g.WindowEnd,
+            Items = g.Items.Select(i => new ReconciliationMatchGroupItemDto
+            {
+                TransactionId = i.TransactionId,
+                Amount = i.Amount
+            }).ToList()
         }).ToList()
     };
 }

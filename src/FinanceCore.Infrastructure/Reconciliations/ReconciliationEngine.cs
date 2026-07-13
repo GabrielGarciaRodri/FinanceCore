@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using FinanceCore.Domain.Repositories;
+using FinanceCore.Domain.Services;
 using FinanceCore.Infrastructure.BackgroundJobs.Jobs;
 using FinanceCore.Infrastructure.Observability;
 
@@ -110,7 +112,8 @@ public class ReconciliationEngine : IReconciliationEngine
 
             if (source == Domain.Entities.ReconciliationSource.StatementTransactions)
             {
-                ApplyStatementMatching(reconciliation, postedTransactions, statementLines!);
+                var groupContext = await BuildGroupMatchingContextAsync(accountId, date, ct);
+                ApplyStatementMatching(reconciliation, postedTransactions, statementLines!, groupContext);
             }
             else
             {
@@ -238,12 +241,55 @@ public class ReconciliationEngine : IReconciliationEngine
             discrepancyAmount: discrepancyAmount);
     }
 
+    /// <summary>
+    /// Perfiles de fuente activos + transacciones de la ventana extendida que
+    /// necesita la pasada N:1. Vacío cuando no hay perfiles configurados.
+    /// </summary>
+    private sealed record GroupMatchingContext(
+        IReadOnlyList<Domain.Entities.ReconciliationSourceProfile> Profiles,
+        IReadOnlyList<Domain.Entities.Transaction> WindowTransactions);
+
+    private async Task<GroupMatchingContext> BuildGroupMatchingContextAsync(
+        Guid accountId,
+        DateOnly date,
+        CancellationToken ct)
+    {
+        var profiles = await _unitOfWork.SourceProfiles.GetActiveForAccountAsync(accountId, ct);
+        if (profiles.Count == 0)
+        {
+            return new GroupMatchingContext(profiles, Array.Empty<Domain.Entities.Transaction>());
+        }
+
+        var maxWindowDays = profiles.Max(p => p.GroupingWindowDays);
+        var windowTransactions = await _unitOfWork.Transactions.GetByAccountAndDateRangeAsync(
+            accountId, date.AddDays(-maxWindowDays), date, ct);
+
+        // Sólo Posted: las Reconciled ya fueron consumidas (1:1 o grupo previo).
+        return new GroupMatchingContext(
+            profiles,
+            windowTransactions.Where(t => t.Status == Domain.Enums.TransactionStatus.Posted).ToList());
+    }
+
     private void ApplyStatementMatching(
         Domain.Entities.Reconciliation reconciliation,
         IReadOnlyList<Domain.Entities.Transaction> postedTransactions,
-        IReadOnlyList<Domain.Entities.ExternalStatementLine> statementLines)
+        IReadOnlyList<Domain.Entities.ExternalStatementLine> statementLines,
+        GroupMatchingContext groupContext)
     {
-        var internalPool = postedTransactions.ToList();
+        // Transacciones consumidas por grupos de una corrida anterior (re-run):
+        // miembros y fees quedan fuera del 1:1 y del conteo base — su aporte a
+        // los totales entra por el agregado del grupo (neto = payout).
+        var preGroupedIds = reconciliation.MatchGroups
+            .SelectMany(g => g.Items.Select(i => i.TransactionId))
+            .Concat(reconciliation.MatchGroups
+                .Where(g => g.FeeTransactionId.HasValue)
+                .Select(g => g.FeeTransactionId!.Value))
+            .ToHashSet();
+
+        var preExistingGroupsByRef = reconciliation.MatchGroups
+            .ToDictionary(g => g.ExternalReference, StringComparer.OrdinalIgnoreCase);
+
+        var internalPool = postedTransactions.Where(t => !preGroupedIds.Contains(t.Id)).ToList();
         var matchedInternal = new HashSet<Guid>();
         var matchedExternalIndexes = new HashSet<int>();
         var matched = 0;
@@ -293,10 +339,112 @@ public class ReconciliationEngine : IReconciliationEngine
             }
         }
 
-        var unmatchedExternal = 0;
+        // ---- Pasada N:1 (SCRUM-41): payouts de pasarela agrupados ----------
+        // Cada grupo aporta a los totales su NETO (= payout): las ventas brutas
+        // y el fee generado se compensan, así un extracto totalmente agrupado
+        // cierra limpio contra el banco.
+        var groupedExternalIndexes = new HashSet<int>();
+        var newlyGroupedIds = new HashSet<Guid>();
+        var nearMissNotes = new Dictionary<int, string>();
+        var groupsInternalCount = 0;
+        var groupsPayoutTotal = 0m;
+
         for (var i = 0; i < statementLines.Count; i++)
         {
             if (matchedExternalIndexes.Contains(i)) continue;
+            var ext = statementLines[i];
+
+            // Re-run idempotente: un payout que ya formó grupo en esta rec
+            // cuenta como matcheado y no se re-forma ni re-toca nada.
+            if (preExistingGroupsByRef.TryGetValue(ext.ExternalReference, out var existingGroup))
+            {
+                groupedExternalIndexes.Add(i);
+                groupsInternalCount += existingGroup.GroupedCount;
+                groupsPayoutTotal += existingGroup.PayoutAmount;
+                matched += existingGroup.GroupedCount;
+                continue;
+            }
+
+            if (ext.Amount <= 0 || groupContext.Profiles.Count == 0) continue;
+
+            var profile = groupContext.Profiles.FirstOrDefault(p => PayoutMatches(p, ext));
+            if (profile == null) continue;
+
+            var windowStart = ext.ValueDate.AddDays(-profile.GroupingWindowDays);
+            var pool = groupContext.WindowTransactions
+                .Where(t => !matchedInternal.Contains(t.Id)
+                         && !newlyGroupedIds.Contains(t.Id)
+                         && !preGroupedIds.Contains(t.Id)
+                         && t.ValueDate >= windowStart
+                         && t.ValueDate <= ext.ValueDate
+                         && InternalMatches(profile, t))
+                .ToList();
+
+            var result = GroupMatcher.FindGroup(
+                ext.Amount,
+                ext.ValueDate,
+                pool.Select(t => new GroupCandidate(t.Id, t.Amount.Amount, t.ValueDate)).ToList(),
+                profile.ExpectedFeePercent,
+                profile.FeeTolerancePercent);
+
+            if (result.Match is { } proposal)
+            {
+                var group = reconciliation.AddMatchGroup(
+                    profile.Id,
+                    ext.ExternalReference,
+                    ext.Amount,
+                    ext.ValueDate,
+                    proposal.Items.Select(c => (c.TransactionId, c.Amount)).ToList(),
+                    proposal.WindowStart,
+                    proposal.WindowEnd);
+
+                // Fee explícito: la comisión queda visible contablemente y
+                // ventas − fee = payout, los libros cierran exactos.
+                if (proposal.FeeAmount > 0)
+                {
+                    var fee = Domain.Entities.Transaction.CreateFee(
+                        $"groupfee-{group.Id:N}",
+                        "SYSTEM",
+                        reconciliation.AccountId,
+                        proposal.FeeAmount,
+                        ext.CurrencyCode,
+                        ext.ValueDate,
+                        $"Comisión {profile.DisplayName} · payout {ext.ExternalReference}");
+                    fee.StartProcessing();
+                    fee.MarkAsValidated();
+                    fee.Post();
+                    _unitOfWork.Transactions.Add(fee);
+                    group.AttachFeeTransaction(fee.Id);
+                }
+
+                // Las ventas quedan conciliadas contra la rec del payout y no
+                // vuelven a entrar en pools futuros.
+                var memberIds = proposal.Items.Select(c => c.TransactionId).ToHashSet();
+                foreach (var t in pool.Where(t => memberIds.Contains(t.Id)))
+                    t.Reconcile(reconciliation.Id);
+
+                newlyGroupedIds.UnionWith(memberIds);
+                groupedExternalIndexes.Add(i);
+                groupsInternalCount += group.GroupedCount;
+                groupsPayoutTotal += group.PayoutAmount;
+                matched += group.GroupedCount;
+
+                _logger.LogInformation(
+                    "Group match: payout {Reference} ({Payout}) = {Count} txns ({Gross}) - fee {Fee} ({FeePct:P2})",
+                    ext.ExternalReference, ext.Amount, group.GroupedCount,
+                    group.GroupedAmount, group.FeeAmount, group.FeePercent);
+            }
+            else if (result.NearMissNote != null)
+            {
+                nearMissNotes[i] = result.NearMissNote;
+            }
+        }
+
+        // ---- No matcheados -------------------------------------------------
+        var unmatchedExternal = 0;
+        for (var i = 0; i < statementLines.Count; i++)
+        {
+            if (matchedExternalIndexes.Contains(i) || groupedExternalIndexes.Contains(i)) continue;
             var ext = statementLines[i];
             unmatchedExternal++;
             reconciliation.AddDiscrepancy(
@@ -307,13 +455,15 @@ public class ReconciliationEngine : IReconciliationEngine
                 externalAmount: ext.Amount,
                 internalDate: null,
                 externalDate: ext.ValueDate,
-                notes: "Transacción presente en extracto externo, ausente internamente");
+                notes: nearMissNotes.TryGetValue(i, out var nearMiss)
+                    ? nearMiss
+                    : "Transacción presente en extracto externo, ausente internamente");
         }
 
         var unmatchedInternal = 0;
-        foreach (var t in postedTransactions)
+        foreach (var t in internalPool)
         {
-            if (matchedInternal.Contains(t.Id)) continue;
+            if (matchedInternal.Contains(t.Id) || newlyGroupedIds.Contains(t.Id)) continue;
             unmatchedInternal++;
             reconciliation.AddDiscrepancy(
                 Domain.Enums.DiscrepancyType.MissingExternal,
@@ -326,12 +476,17 @@ public class ReconciliationEngine : IReconciliationEngine
                 notes: "Transacción interna sin contraparte en extracto externo");
         }
 
-        var totalInternalAmount = postedTransactions.Sum(t => t.Amount.Amount);
+        // ---- Totales -------------------------------------------------------
+        // Base = transacciones del día no consumidas por grupos; cada grupo
+        // suma sus N ventas al conteo y su payout (neto) a los montos.
+        var baseTransactions = internalPool.Where(t => !newlyGroupedIds.Contains(t.Id)).ToList();
+        var totalInternalRecords = baseTransactions.Count + groupsInternalCount;
+        var totalInternalAmount = baseTransactions.Sum(t => t.Amount.Amount) + groupsPayoutTotal;
         var totalExternalAmount = statementLines.Sum(l => l.Amount);
         var discrepancyAmount = totalExternalAmount - totalInternalAmount;
 
         reconciliation.Complete(
-            totalInternal: postedTransactions.Count,
+            totalInternal: totalInternalRecords,
             totalExternal: statementLines.Count,
             matched: matched,
             unmatchedInternal: unmatchedInternal,
@@ -339,6 +494,43 @@ public class ReconciliationEngine : IReconciliationEngine
             totalInternalAmount: totalInternalAmount,
             totalExternalAmount: totalExternalAmount,
             discrepancyAmount: discrepancyAmount);
+    }
+
+    private static bool PayoutMatches(
+        Domain.Entities.ReconciliationSourceProfile profile,
+        Domain.Entities.ExternalStatementLine line)
+        => SafeIsMatch($"{line.ExternalReference} {line.Description}", profile.PayoutPattern);
+
+    private static bool InternalMatches(
+        Domain.Entities.ReconciliationSourceProfile profile,
+        Domain.Entities.Transaction transaction)
+    {
+        var value = profile.InternalMatchField switch
+        {
+            Domain.Enums.InternalMatchField.ExternalIdSource => transaction.ExternalIdSource,
+            Domain.Enums.InternalMatchField.Category => transaction.Category,
+            Domain.Enums.InternalMatchField.CounterpartyName => transaction.Counterparty?.Name,
+            _ => null
+        };
+
+        return value != null && SafeIsMatch(value, profile.InternalMatchPattern);
+    }
+
+    private static bool SafeIsMatch(string input, string pattern)
+    {
+        try
+        {
+            return Regex.IsMatch(
+                input,
+                pattern,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(250));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Patrón patológico: mejor no matchear que colgar la conciliación.
+            return false;
+        }
     }
 
     private async Task MarkDailyBalanceReconciledAsync(

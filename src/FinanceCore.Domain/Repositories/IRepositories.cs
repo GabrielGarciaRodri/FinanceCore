@@ -301,6 +301,28 @@ public interface IReconciliationRepository
 }
 
 /// <summary>
+/// Repositorio para perfiles de conciliación por fuente (matching N:1).
+/// </summary>
+public interface IReconciliationSourceProfileRepository
+{
+    Task<ReconciliationSourceProfile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Perfiles activos aplicables a una cuenta: los específicos de la cuenta
+    /// primero, después los globales (AccountId null).
+    /// </summary>
+    Task<IReadOnlyList<ReconciliationSourceProfile>> GetActiveForAccountAsync(
+        Guid accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ReconciliationSourceProfile>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    void Add(ReconciliationSourceProfile profile);
+    void Update(ReconciliationSourceProfile profile);
+    void Remove(ReconciliationSourceProfile profile);
+}
+
+/// <summary>
 /// Unit of Work para coordinar transacciones de base de datos.
 /// </summary>
 public interface IUnitOfWork : IDisposable
@@ -310,6 +332,7 @@ public interface IUnitOfWork : IDisposable
     IDailyBalanceRepository DailyBalances { get; }
     IExchangeRateRepository ExchangeRates { get; }
     IReconciliationRepository Reconciliations { get; }
+    IReconciliationSourceProfileRepository SourceProfiles { get; }
     
     /// <summary>
     /// Guarda todos los cambios pendientes.
