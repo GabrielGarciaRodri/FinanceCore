@@ -487,3 +487,5 @@ bin/
 obj/
 *.user
 .claude/
+knowledge/
+/CLAUDE.md
