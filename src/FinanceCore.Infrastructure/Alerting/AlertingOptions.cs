@@ -28,4 +28,30 @@ public class AlertingOptions
     /// Severidad mínima para que un alerta se procese. Valores: Info, Warning, Error, Critical.
     /// </summary>
     public string MinimumSeverity { get; set; } = "Warning";
+
+    /// <summary>
+    /// Habilita el envío de emails vía Resend (reglas de negocio, SCRUM-45).
+    /// </summary>
+    public bool EmailEnabled { get; set; } = false;
+
+    /// <summary>
+    /// API key de Resend. En producción va por env var
+    /// (FinanceCore__Alerting__ResendApiKey), nunca en appsettings.
+    /// </summary>
+    public string? ResendApiKey { get; set; }
+
+    /// <summary>
+    /// Remitente. El default de Resend funciona sin verificar dominio propio.
+    /// </summary>
+    public string EmailFrom { get; set; } = "FinanceCore <onboarding@resend.dev>";
+
+    /// <summary>
+    /// Destinatario por defecto cuando la regla no define el suyo.
+    /// </summary>
+    public string? EmailTo { get; set; }
+
+    /// <summary>
+    /// Timeout para la llamada a la API de Resend.
+    /// </summary>
+    public int EmailTimeoutSeconds { get; set; } = 10;
 }

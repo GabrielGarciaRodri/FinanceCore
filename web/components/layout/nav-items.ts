@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { LayoutDashboard, Receipt, ScrollText, Upload, Wallet } from "lucide-react";
+import { Bell, LayoutDashboard, Receipt, ScrollText, Upload, Wallet } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -16,4 +16,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/transactions", label: "Transacciones", icon: Receipt },
   { href: "/reconciliations", label: "Reconciliaciones", icon: ScrollText },
   { href: "/upload", label: "Cargar archivos", icon: Upload, writeOnly: true },
+  { href: "/alerts", label: "Alertas", icon: Bell, writeOnly: true },
 ];

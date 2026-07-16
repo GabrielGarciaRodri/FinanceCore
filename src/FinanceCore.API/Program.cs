@@ -120,6 +120,7 @@ try
     services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
     services.AddScoped<IReconciliationRepository, ReconciliationRepository>();
     services.AddScoped<IReconciliationSourceProfileRepository, ReconciliationSourceProfileRepository>();
+    services.AddScoped<IAlertRuleRepository, AlertRuleRepository>();
     services.AddScoped<IUnitOfWork, UnitOfWork>();
     services.Configure<FileIngestionOptions>(configuration.GetSection("FinanceCore:FileIngestion"));
     services.Configure<ExchangeRateOptions>(configuration.GetSection(ExchangeRateOptions.SectionName));
@@ -157,6 +158,8 @@ try
     services.AddScoped<IAlertSink, LoggingAlertSink>();
     services.AddHttpClient<WebhookAlertSink>();
     services.AddScoped<IAlertSink>(sp => sp.GetRequiredService<WebhookAlertSink>());
+    services.AddHttpClient<EmailAlertSink>();
+    services.AddScoped<IAlertSink>(sp => sp.GetRequiredService<EmailAlertSink>());
     services.AddScoped<IAlertDispatcher, AlertDispatcher>();
 
     // ─────────────────────────────────────────────────────────────────────────────

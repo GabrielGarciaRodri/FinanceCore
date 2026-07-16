@@ -89,6 +89,18 @@ public static class HangfireJobsConfiguration
                 MisfireHandling = MisfireHandlingMode.Relaxed
             });
 
+        // Alertas de negocio (payout que no llegó, saldo bajo) - 7am,
+        // después del cierre nocturno y antes del arranque del día.
+        RecurringJob.AddOrUpdate<Jobs.BusinessAlertEvaluationJob>(
+            "business-alerts",
+            job => job.EvaluateAsync(CancellationToken.None),
+            "0 7 * * *",
+            new RecurringJobOptions
+            {
+                TimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Bogota"),
+                MisfireHandling = MisfireHandlingMode.Relaxed
+            });
+
         // Actualizar tipos de cambio cada hora
         RecurringJob.AddOrUpdate<Jobs.ExchangeRateUpdateJob>(
             "exchange-rate-update",

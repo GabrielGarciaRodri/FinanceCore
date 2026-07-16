@@ -230,8 +230,9 @@ public class GroupMatchingEngineTests : IAsyncLifetime
         var fxRepo = new ExchangeRateRepository(ctx, cache);
         var recRepo = new ReconciliationRepository(ctx);
         var profileRepo = new ReconciliationSourceProfileRepository(ctx);
+        var alertRepo = new AlertRuleRepository(ctx);
 
-        var uow = new UnitOfWork(ctx, txRepo, acctRepo, dailyRepo, fxRepo, recRepo, profileRepo);
+        var uow = new UnitOfWork(ctx, txRepo, acctRepo, dailyRepo, fxRepo, recRepo, profileRepo, alertRepo);
         return (uow, ctx);
     }
 

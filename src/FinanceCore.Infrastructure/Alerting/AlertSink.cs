@@ -12,7 +12,12 @@ public sealed record Alert(
     string Title,
     string Message,
     DateTimeOffset OccurredAt,
-    IReadOnlyDictionary<string, object?> Properties);
+    IReadOnlyDictionary<string, object?> Properties,
+    // Routing opcional por nombre de sink ("logging", "webhook", "email").
+    // null = fan-out a todos (alertas de sistema, comportamiento original).
+    IReadOnlyCollection<string>? Channels = null,
+    // Destinatario específico para el sink de email; null = el global de config.
+    string? EmailToOverride = null);
 
 public interface IAlertSink
 {
@@ -55,6 +60,9 @@ public class AlertDispatcher : IAlertDispatcher
 
         foreach (var sink in _sinks)
         {
+            if (alert.Channels != null && !alert.Channels.Contains(sink.Name))
+                continue;
+
             try
             {
                 await sink.SendAsync(alert, cancellationToken);

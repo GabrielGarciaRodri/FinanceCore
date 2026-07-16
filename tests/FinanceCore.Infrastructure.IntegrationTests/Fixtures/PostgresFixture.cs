@@ -96,6 +96,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         const string sql = @"
             TRUNCATE TABLE
+                alert_rules,
                 reconciliation_match_group_items,
                 reconciliation_match_groups,
                 reconciliation_source_profiles,

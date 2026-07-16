@@ -323,6 +323,27 @@ public interface IReconciliationSourceProfileRepository
 }
 
 /// <summary>
+/// Repositorio para reglas de alerta de negocio (SCRUM-45).
+/// </summary>
+public interface IAlertRuleRepository
+{
+    Task<AlertRule?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AlertRule>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reglas habilitadas de un tipo dado (para los evaluadores).
+    /// </summary>
+    Task<IReadOnlyList<AlertRule>> GetEnabledByTypeAsync(
+        AlertRuleType type,
+        CancellationToken cancellationToken = default);
+
+    void Add(AlertRule rule);
+    void Update(AlertRule rule);
+    void Remove(AlertRule rule);
+}
+
+/// <summary>
 /// Unit of Work para coordinar transacciones de base de datos.
 /// </summary>
 public interface IUnitOfWork : IDisposable
@@ -333,6 +354,7 @@ public interface IUnitOfWork : IDisposable
     IExchangeRateRepository ExchangeRates { get; }
     IReconciliationRepository Reconciliations { get; }
     IReconciliationSourceProfileRepository SourceProfiles { get; }
+    IAlertRuleRepository AlertRules { get; }
     
     /// <summary>
     /// Guarda todos los cambios pendientes.

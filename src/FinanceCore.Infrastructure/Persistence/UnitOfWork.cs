@@ -12,6 +12,7 @@ public class UnitOfWork : IUnitOfWork
     private readonly IExchangeRateRepository _exchangeRateRepository;
     private readonly IReconciliationRepository _reconciliationRepository;
     private readonly IReconciliationSourceProfileRepository _sourceProfileRepository;
+    private readonly IAlertRuleRepository _alertRuleRepository;
 
     public UnitOfWork(
         FinanceCoreDbContext context,
@@ -20,7 +21,8 @@ public class UnitOfWork : IUnitOfWork
         IDailyBalanceRepository dailyBalanceRepository,
         IExchangeRateRepository exchangeRateRepository,
         IReconciliationRepository reconciliationRepository,
-        IReconciliationSourceProfileRepository sourceProfileRepository)
+        IReconciliationSourceProfileRepository sourceProfileRepository,
+        IAlertRuleRepository alertRuleRepository)
     {
         _context = context;
         _transactionRepository = transactionRepository;
@@ -29,6 +31,7 @@ public class UnitOfWork : IUnitOfWork
         _exchangeRateRepository = exchangeRateRepository;
         _reconciliationRepository = reconciliationRepository;
         _sourceProfileRepository = sourceProfileRepository;
+        _alertRuleRepository = alertRuleRepository;
     }
 
     public ITransactionRepository Transactions => _transactionRepository;
@@ -37,6 +40,7 @@ public class UnitOfWork : IUnitOfWork
     public IExchangeRateRepository ExchangeRates => _exchangeRateRepository;
     public IReconciliationRepository Reconciliations => _reconciliationRepository;
     public IReconciliationSourceProfileRepository SourceProfiles => _sourceProfileRepository;
+    public IAlertRuleRepository AlertRules => _alertRuleRepository;
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => await _context.SaveChangesAsync(cancellationToken);

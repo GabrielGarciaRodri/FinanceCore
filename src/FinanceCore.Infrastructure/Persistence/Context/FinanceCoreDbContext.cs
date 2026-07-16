@@ -34,6 +34,7 @@ public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ReconciliationSourceProfile> ReconciliationSourceProfiles => Set<ReconciliationSourceProfile>();
     public DbSet<ReconciliationMatchGroup> ReconciliationMatchGroups => Set<ReconciliationMatchGroup>();
     public DbSet<ReconciliationMatchGroupItem> ReconciliationMatchGroupItems => Set<ReconciliationMatchGroupItem>();
+    public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -98,6 +99,7 @@ public class FinanceCoreDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.ApplyConfiguration(new ReconciliationSourceProfileConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationMatchGroupConfiguration());
         modelBuilder.ApplyConfiguration(new ReconciliationMatchGroupItemConfiguration());
+        modelBuilder.ApplyConfiguration(new AlertRuleConfiguration());
         modelBuilder.ApplyConfiguration(new ApplicationUserConfiguration());
         modelBuilder.ApplyConfiguration(new RefreshTokenConfiguration());
 
@@ -427,6 +429,48 @@ public class InstitutionConfiguration : IEntityTypeConfiguration<Institution>
         
         // Ignorar Metadata (Dictionary no soportado directamente)
         builder.Ignore(i => i.Metadata);
+    }
+}
+
+public class AlertRuleConfiguration : IEntityTypeConfiguration<AlertRule>
+{
+    public void Configure(EntityTypeBuilder<AlertRule> builder)
+    {
+        builder.ToTable("alert_rules");
+        builder.HasKey(r => r.Id);
+        // Id de dominio: ver nota en ReconciliationDiscrepancyConfiguration.
+        builder.Property(r => r.Id).ValueGeneratedNever();
+
+        builder.HasIndex(r => r.AccountId).HasDatabaseName("idx_alert_rules_account");
+        builder.HasIndex(r => r.SourceProfileId).HasDatabaseName("idx_alert_rules_source_profile");
+
+        builder.Property(r => r.Name).HasMaxLength(100).IsRequired();
+
+        builder.Property(r => r.Type)
+            .HasColumnName("rule_type")
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        // Flags como texto: 'Email' | 'Webhook' | 'Email, Webhook'.
+        builder.Property(r => r.Channels)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(r => r.ThresholdAmount).HasPrecision(18, 4);
+        builder.Property(r => r.ThresholdPercent).HasPrecision(9, 6);
+        builder.Property(r => r.EmailTo).HasMaxLength(200);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(r => r.AccountId);
+
+        builder.HasOne<ReconciliationSourceProfile>()
+            .WithMany()
+            .HasForeignKey(r => r.SourceProfileId);
+
+        builder.Ignore(r => r.DomainEvents);
     }
 }
 

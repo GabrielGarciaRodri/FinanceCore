@@ -41,6 +41,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/alert-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertRuleDto"][];
+                        "application/json": components["schemas"]["AlertRuleDto"][];
+                        "text/json": components["schemas"]["AlertRuleDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateAlertRuleCommand"];
+                    "text/json": components["schemas"]["CreateAlertRuleCommand"];
+                    "application/*+json": components["schemas"]["CreateAlertRuleCommand"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertRuleDto"];
+                        "application/json": components["schemas"]["AlertRuleDto"];
+                        "text/json": components["schemas"]["AlertRuleDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alert-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateAlertRuleCommand"];
+                    "text/json": components["schemas"]["UpdateAlertRuleCommand"];
+                    "application/*+json": components["schemas"]["UpdateAlertRuleCommand"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AlertRuleDto"];
+                        "application/json": components["schemas"]["AlertRuleDto"];
+                        "text/json": components["schemas"]["AlertRuleDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/Auth/login": {
         parameters: {
             query?: never;
@@ -1356,6 +1517,29 @@ export interface components {
             /** Format: double */
             credits: number;
         };
+        AlertRuleDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: string;
+            /** Format: uuid */
+            accountId?: string | null;
+            /** Format: uuid */
+            sourceProfileId?: string | null;
+            /** Format: double */
+            thresholdAmount?: number | null;
+            /** Format: double */
+            thresholdPercent?: number | null;
+            /** Format: int32 */
+            lookbackDays?: number | null;
+            channels: string;
+            emailTo?: string | null;
+            /** Format: int32 */
+            cooldownHours: number;
+            isEnabled: boolean;
+            /** Format: date-time */
+            lastTriggeredAt?: string | null;
+        };
         ApproveReconciliationRequest: {
             approvedBy: string;
             resolutionNotes?: string | null;
@@ -1381,6 +1565,24 @@ export interface components {
             totalBalance: number;
             /** Format: int32 */
             accountCount: number;
+        };
+        CreateAlertRuleCommand: {
+            name: string;
+            type: string;
+            /** Format: uuid */
+            accountId?: string | null;
+            /** Format: uuid */
+            sourceProfileId?: string | null;
+            /** Format: double */
+            thresholdAmount?: number | null;
+            /** Format: double */
+            thresholdPercent?: number | null;
+            /** Format: int32 */
+            lookbackDays?: number | null;
+            channels: string;
+            emailTo?: string | null;
+            /** Format: int32 */
+            cooldownHours: number;
         };
         CreateSourceProfileCommand: {
             /** Format: uuid */
@@ -1859,6 +2061,26 @@ export interface components {
             largestDebit: number;
             /** Format: double */
             largestCredit: number;
+        };
+        UpdateAlertRuleCommand: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            accountId?: string | null;
+            /** Format: uuid */
+            sourceProfileId?: string | null;
+            /** Format: double */
+            thresholdAmount?: number | null;
+            /** Format: double */
+            thresholdPercent?: number | null;
+            /** Format: int32 */
+            lookbackDays?: number | null;
+            channels: string;
+            emailTo?: string | null;
+            /** Format: int32 */
+            cooldownHours: number;
+            isEnabled: boolean;
         };
         UpdateSourceProfileCommand: {
             /** Format: uuid */
