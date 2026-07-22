@@ -267,15 +267,18 @@ try
     // ─────────────────────────────────────────────────────────────────────────────
     // Health Checks
     // ─────────────────────────────────────────────────────────────────────────────
+    // El tag "ready" separa los checks con dependencias externas: /health (liveness,
+    // lo pinguean UptimeRobot y Render) no debe tocar Postgres, porque cada query
+    // despierta el compute de Neon y en free tier la cuota mensual es limitada.
     services.AddHealthChecks()
         .AddNpgSql(
             configuration.GetConnectionString("DefaultConnection")!,
             name: "postgresql",
-            tags: new[] { "db", "sql", "postgresql" })
+            tags: new[] { "db", "sql", "postgresql", "ready" })
         .AddHangfire(
             options => options.MinimumAvailableServers = 1,
             name: "hangfire",
-            tags: new[] { "hangfire", "jobs" });
+            tags: new[] { "hangfire", "jobs", "ready" });
 
     // ─────────────────────────────────────────────────────────────────────────────
     // API Controllers
@@ -731,25 +734,40 @@ try
     app.MapPrometheusScrapingEndpoint("/metrics").AllowAnonymous();
 
     // Health checks (anonymous access)
+    static Task WriteHealthResponse(
+        HttpContext context,
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthReport report)
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration.TotalMilliseconds
+            }),
+            totalDuration = report.TotalDuration.TotalMilliseconds
+        };
+        return context.Response.WriteAsJsonAsync(result);
+    }
+
+    // Liveness: sin checks de dependencias — no toca Postgres para que el
+    // compute de Neon pueda suspenderse entre visitas reales.
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
-        ResponseWriter = async (context, report) =>
-        {
-            context.Response.ContentType = "application/json";
-            var result = new
-            {
-                status = report.Status.ToString(),
-                checks = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
-                    duration = e.Value.Duration.TotalMilliseconds
-                }),
-                totalDuration = report.TotalDuration.TotalMilliseconds
-            };
-            await context.Response.WriteAsJsonAsync(result);
-        }
+        Predicate = registration => !registration.Tags.Contains("ready"),
+        ResponseWriter = WriteHealthResponse
+    }).AllowAnonymous();
+
+    // Readiness: checks completos (Postgres + Hangfire). Despierta la DB;
+    // usar solo para diagnóstico puntual, no para monitoreo periódico.
+    app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        Predicate = _ => true,
+        ResponseWriter = WriteHealthResponse
     }).AllowAnonymous();
 
     // Hangfire Dashboard

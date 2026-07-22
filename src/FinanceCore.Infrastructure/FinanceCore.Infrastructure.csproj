@@ -12,6 +12,7 @@
     <PackageReference Include="Hangfire.Core" Version="1.8.9" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.9" />
     <PackageReference Include="Hangfire.PostgreSql" Version="1.20.8" />
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />

@@ -1,4 +1,5 @@
 using Hangfire;
+using Hangfire.InMemory;
 using Hangfire.PostgreSql;
 using Hangfire.Dashboard;
 using Microsoft.Extensions.Configuration;
@@ -19,16 +20,35 @@ public static class HangfireJobsConfiguration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("HangfireConnection") 
+        var connectionString = configuration.GetConnectionString("HangfireConnection")
             ?? configuration.GetConnectionString("DefaultConnection");
+
+        // "InMemory" evita que el polling de Hangfire (cada 15s) toque Postgres.
+        // Producción corre sobre Neon free tier, que suspende el compute solo si
+        // no hay actividad; con storage en Postgres la DB nunca duerme y la cuota
+        // mensual se agota a mitad de mes. Trade-off: los jobs encolados no
+        // sobreviven un reinicio del proceso (aceptable para la demo).
+        var storage = configuration["Hangfire:Storage"];
+        var useInMemory = string.Equals(storage, "InMemory", StringComparison.OrdinalIgnoreCase);
 
         services.AddHangfire(config =>
         {
             config
                 .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                 .UseSimpleAssemblyNameTypeSerializer()
-                .UseRecommendedSerializerSettings()
-                .UsePostgreSqlStorage(options =>
+                .UseRecommendedSerializerSettings();
+
+            if (useInMemory)
+            {
+                config.UseInMemoryStorage(new InMemoryStorageOptions
+                {
+                    // Acota la memoria del historial de jobs en instancias chicas.
+                    MaxExpirationTime = TimeSpan.FromHours(6)
+                });
+            }
+            else
+            {
+                config.UsePostgreSqlStorage(options =>
                 {
                     options.UseNpgsqlConnection(connectionString);
                 }, new PostgreSqlStorageOptions
@@ -41,6 +61,7 @@ public static class HangfireJobsConfiguration
                     TransactionSynchronisationTimeout = TimeSpan.FromMinutes(5),
                     InvisibilityTimeout = TimeSpan.FromMinutes(30)
                 });
+            }
         });
 
         services.AddHangfireServer(options =>
